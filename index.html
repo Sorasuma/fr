@@ -2,20 +2,28 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Родословная драконов</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya:wght@500;700&family=Alegreya+Sans:wght@400;500&display=swap">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <style>
-:root{--bg:#e9eeea;--panel:#f6f8f6;--ink:#1f3a3d;--mute:#5d7274;--line:#bccac6;--m:#3e5c76;--f:#9b4f63;--btn:#1f3a3d;--btnt:#f6f8f6}
-@media(prefers-color-scheme:dark){:root{--bg:#14211f;--panel:#1c2d2b;--ink:#e3ece8;--mute:#93a9a5;--line:#34504b;--m:#7ea3c4;--f:#d98aa0;--btn:#e3ece8;--btnt:#14211f}}
+/* Палитра сайта: меняется в одном месте */
+:root{color-scheme:dark;--bg:#0e1a1d;--panel:#152428;--ink:#ebe4d0;--mute:#8ea6a4;--line:#2d4649;--lnk:#9a8450;--gold:#d6a84e;--m:#6fb3c9;--f:#e39a9a;--btn:#d6a84e;--btnt:#10191b}
 *{box-sizing:border-box}
 html,body{margin:0}
-body{background:var(--bg);color:var(--ink);font:16px/1.5 "Alegreya Sans",system-ui,sans-serif;padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0)}
+body{background:var(--bg);color:var(--ink);font:16px/1.5 "Alegreya Sans",system-ui,sans-serif;padding-bottom:env(safe-area-inset-bottom,0)}
 h1,h2,.nm{font-family:Alegreya,Georgia,serif}
-h1{font-size:2rem;margin:0}
+h1{font-size:clamp(1.6rem,4vw,2.5rem);margin:0}
 h2{font-size:1.25rem;margin:0 0 .6rem}
-header{display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;padding:1.2rem 1.4rem;border-bottom:1px solid var(--line)}
+.banner{position:relative;height:clamp(110px,22vw,240px);background:#0b1517;overflow:hidden}
+.banner img{width:100%;height:100%;object-fit:cover;display:block}
+.banner::after{content:"";position:absolute;inset:0;background:linear-gradient(transparent 30%,var(--bg))}
+.banner h1{position:absolute;left:1.4rem;bottom:.5rem;z-index:1;text-shadow:0 2px 10px #000}
+header{display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;padding:.4rem 1.4rem .6rem;border-bottom:1px solid var(--line)}
+.tabs{display:flex;gap:.3rem}
+.tabs button{border:0;border-bottom:2px solid transparent;border-radius:0;font:700 1.15rem Alegreya,Georgia,serif;color:var(--mute);padding:.3rem .8rem}
+.tabs button.on{color:var(--gold);border-color:var(--gold)}
+body.story .tonly{display:none}
 main{padding:1.2rem 1.4rem;max-width:1700px;margin:auto}
 section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:1rem}
 input,select,textarea,button{font:inherit;color:inherit}
@@ -23,65 +31,73 @@ input,select,textarea{width:100%;padding:.45rem .6rem;border:1px solid var(--lin
 label{font-size:.9rem;color:var(--mute);display:block}
 button{cursor:pointer;border:1px solid var(--line);background:transparent;border-radius:6px;padding:.4rem .8rem}
 button.pri{background:var(--btn);color:var(--btnt);border-color:var(--btn)}
-button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--m);outline-offset:1px}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
 .row{display:flex;gap:.5rem;flex-wrap:wrap}
 .list{margin-top:.2rem}
 .item{display:flex;align-items:center;gap:.5rem;padding:.35rem .4rem;border-radius:6px;cursor:pointer}
 .item:hover,.item.on{background:var(--bg)}
-.dot{width:.7rem;height:.7rem;border-radius:50%;flex:none}
+.dot{width:.7rem;height:.7rem;border-radius:50%;flex:none;background:var(--c)}
 .M{--c:var(--m)}.F{--c:var(--f)}.U{--c:var(--mute)}
-.dot{background:var(--c)}
-.view{position:relative;height:calc(100vh - 12rem);min-height:420px;overflow:hidden;border:1px solid var(--line);border-radius:8px;background:var(--bg);touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none}
+.view{position:relative;height:calc(100vh - 19rem);min-height:420px;overflow:hidden;border:1px solid var(--line);border-radius:8px;background:var(--bg);touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none}
 .view.drag{cursor:grabbing}
-.canvas{position:absolute;left:0;top:0;transform-origin:0 0;padding:1.2rem;width:max-content}
+.canvas{position:absolute;left:0;top:0;transform-origin:0 0}
+.lines{position:absolute;left:0;top:0;pointer-events:none}
+.lines path{fill:none;stroke:var(--lnk);stroke-width:2;stroke-linejoin:round}
+.lines circle{fill:var(--gold)}
 .ctl{position:absolute;right:.6rem;top:.6rem;z-index:2;display:flex;gap:.3rem}
 .ctl button{background:var(--panel);min-width:2.2rem}
 .pic{width:3rem;height:3rem;object-fit:contain;flex:none;border-radius:6px;pointer-events:none}
-.root .pic{width:5rem;height:5rem}
 .txt{min-width:0}
 .bar{display:flex;justify-content:space-between;align-items:center;gap:.6rem;margin-bottom:.6rem}
 .bar h2{margin:0}
-.scrim{position:fixed;inset:0;background:rgba(10,20,18,.4);z-index:10}
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:10}
 .drawer{position:fixed;top:0;bottom:0;width:min(380px,92vw);background:var(--panel);z-index:20;overflow:auto;padding:1rem;padding-top:calc(1rem + env(safe-area-inset-top,0px));padding-bottom:calc(1rem + env(safe-area-inset-bottom,0px))}
 .drawer.left{left:0;border-right:1px solid var(--line)}
 .drawer.right{right:0;border-left:1px solid var(--line)}
-.drawer.hide,.scrim.hide{display:none}
 .dh{display:flex;justify-content:space-between;align-items:center;margin-bottom:.8rem}
 .dh h2{margin:0}
-.forest{display:flex;flex-direction:column;gap:1.2rem}
-.stub .box{opacity:.55;border-style:dashed}
-.mx{flex:none;color:var(--mute);font-size:1.1rem}
 .th{width:1.9rem;height:1.9rem;object-fit:contain;flex:none;pointer-events:none}
 .prev{display:block;max-height:130px;max-width:100%;object-fit:contain;margin:0 0 .4rem;border-radius:6px}
-.n{display:flex;align-items:center;flex:1;gap:.7rem}
-.par{display:flex;flex-direction:column;flex:1}
-.tree .n .n{min-height:4rem}
-.box{display:flex;align-items:center;gap:.5rem;flex:none;width:13rem;padding:.35rem .6rem;border:1px solid var(--line);border-left:4px solid var(--c);border-radius:6px;background:var(--bg);margin:.2rem 0;cursor:pointer}
-.box.empty{border-style:dashed;border-left-style:dashed;color:var(--mute);cursor:default}
-.box.root{width:16rem;background:var(--panel)}
-.nm{font-weight:700;line-height:1.2;overflow-wrap:anywhere}
+.box{position:absolute;display:flex;align-items:center;gap:.5rem;width:208px;height:64px;padding:.25rem .55rem;border:1px solid var(--line);border-left:4px solid var(--c);border-radius:6px;background:var(--panel);cursor:pointer}
+.box:hover{border-color:var(--c)}
+.box.sel{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold)}
+.nm{font-weight:700;line-height:1.15;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .sm{font-size:.8rem;color:var(--mute)}
+.box .sm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .msg{color:var(--f);min-height:1.2rem;font-size:.9rem}
-.hide{display:none}
+.story{display:grid;grid-template-columns:15rem 1fr;gap:1.4rem;align-items:start}
+#toc{display:flex;flex-direction:column;gap:.2rem}
+#toc button{text-align:left;border-color:transparent;font-family:Alegreya,Georgia,serif;font-size:1.05rem}
+#toc button.on{border-left:3px solid var(--gold);background:var(--bg);border-radius:0 6px 6px 0}
+#chap{max-width:44rem;font:1.2rem/1.75 Alegreya,Georgia,serif}
+#chap h2{font-size:1.8rem;color:var(--gold)}
+#chap p{margin:0 0 1em}
+#chap textarea{font-size:1.05rem;line-height:1.6}
+@media(max-width:700px){.story{grid-template-columns:1fr}#toc{flex-direction:row;flex-wrap:wrap}}
+.hide{display:none!important}
 </style>
 </head>
 <body>
+<div class="banner"><img src="https://www1.flightrising.com/static/cms/location_banners/42.jpg" alt="" referrerpolicy="no-referrer" onerror="this.remove()"><h1>Родословная драконов</h1></div>
 <header>
-  <h1>Родословная драконов</h1>
+  <nav class="tabs"><button data-tab="tree" class="on">Родословная</button><button data-tab="story">История клана</button></nav>
   <div class="row" style="align-items:center">
-    <button id="openList">Все драконы</button>
-    <button id="newBtn" class="pri hide">+ Новый дракон</button>
+    <button id="openList" class="tonly">Все драконы</button>
+    <button id="newBtn" class="pri tonly hide">+ Новый дракон</button>
     <div id="auth" class="row"></div>
   </div>
 </header>
 <main>
-  <section class="stage">
+  <section id="treeView">
     <div class="bar"><h2 id="treeTitle">Вся родословная</h2><button id="editBtn" class="hide">Изменить дракона</button></div>
     <div class="view" id="view">
       <div class="ctl" id="ctl"><button id="all" title="Показать всех драконов">Вся родословная</button><button id="zin" title="Приблизить" aria-label="Приблизить">+</button><button id="zout" title="Отдалить" aria-label="Отдалить">−</button><button id="fit" title="Показать всё">Вместить</button></div>
-      <div id="tree" class="tree canvas"></div>
+      <div id="tree" class="canvas"></div>
     </div>
-    <div id="kids"></div>
+  </section>
+  <section id="storyView" class="hide">
+    <div class="bar"><h2>История клана</h2><button id="addCh" class="pri hide">+ Новая глава</button></div>
+    <div class="story"><nav id="toc" aria-label="Главы"></nav><article id="chap"></article></div>
   </section>
 </main>
 <div id="scrim" class="scrim hide"></div>
@@ -105,10 +121,9 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 </aside>
 
 <script>
-// 1. Вставьте данные своего проекта Supabase (Project Settings → API)
 const SUPABASE_URL = 'https://tqxuhahvnpytncfqjabg.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_AnciNoh96LD8Qe3CXC2AUQ_dETTOser';
-const GENERATIONS = 4; // сколько поколений предков показывать
+const GENERATIONS = 4; // сколько поколений предков показывать у выбранного дракона
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const $ = id => document.getElementById(id);
@@ -143,96 +158,105 @@ function fillSelects() {
   $('sire').value = s; $('dam').value = m;
 }
 
-function box(id, root) {
+// ---------- Схема родословной: каждый дракон один раз, связи линиями ----------
+const CW = 232, CARD = 208, CH = 64, RH = 130, PAD = 24;
+const byName = (a, b) => a.name.localeCompare(b.name, 'ru');
+
+function box(id, l, t) {
   const d = byId[id];
-  if (!d) return `<div class="box empty U"><span class="sm">неизвестен</span></div>`;
   const pic = d.image_url ? `<img class="pic" src="${esc(d.image_url)}" alt="" referrerpolicy="no-referrer" draggable="false" onerror="this.remove()">` : '';
-  return `<div class="box ${d.sex} ${root ? 'root' : ''}" data-id="${d.id}">${pic}
+  return `<div class="box ${d.sex} ${id === sel ? 'sel' : ''}" data-id="${id}" title="${esc(d.name)}" style="left:${l}px;top:${t}px">${pic}
     <div class="txt"><div class="nm">${esc(d.name)}</div>${d.notes ? `<div class="sm">${esc(d.notes)}</div>` : ''}</div></div>`;
 }
 
-function node(id, depth, seen) {
-  const d = byId[id];
-  const loop = d && seen.has(id); // защита от зацикливания
-  if (!d || loop || depth >= GENERATIONS) return `<div class="n">${box(loop ? null : id)}</div>`;
-  const s = new Set(seen).add(id);
-  return `<div class="n">${box(id, depth === 0)}<div class="par">${node(d.sire_id, depth + 1, s)}${node(d.dam_id, depth + 1, s)}</div></div>`;
-}
-
-// Вся родословная: пары родителей рядом, дети справа. Каждый дракон показан один раз полностью;
-// повторные появления (второй партнёр, у которого есть свои предки) — бледные карточки.
-function forest() {
-  const placed = new Set(), done = new Set(), out = [];
-  const byName = (a, b) => a.name.localeCompare(b.name, 'ru');
-  const known = d => byId[d.sire_id] || byId[d.dam_id];
-  const stub = id => `<div class="stub">${box(id)}</div>`;
-  function unitsOf(id) {
-    const m = new Map();
-    dragons.forEach(k => {
-      if (k.sire_id !== id && k.dam_id !== id) return;
-      const key = (k.sire_id || '') + '|' + (k.dam_id || '');
-      if (!m.has(key)) m.set(key, []);
-      m.get(key).push(k);
-    });
-    return [...m];
-  }
-  function mates(id) {
-    const rows = [];
-    for (const [key, kids] of unitsOf(id)) {
-      if (done.has(key)) continue;
-      done.add(key);
-      const [a, b] = key.split('|'), mid = a === id ? b : a, mate = byId[mid];
-      let mbox = '';
-      if (mate) {
-        if (placed.has(mid) || known(mate)) mbox = `<span class="mx">×</span>${stub(mid)}`;
-        else { placed.add(mid); mbox = `<span class="mx">×</span>${box(mid)}`; }
+function graph(list) {
+  const S = new Set(list.map(d => d.id)), lvl = {};
+  const P = d => [d.sire_id, d.dam_id].filter(i => S.has(i));
+  list.forEach(d => lvl[d.id] = 0);
+  // поколения: ребёнок ниже родителей, оба родителя на одной строке
+  for (let n = 0, c = 1; c && n < 60; n++) {
+    c = 0;
+    list.forEach(d => {
+      const p = P(d); if (!p.length) return;
+      const l = Math.max(...p.map(i => lvl[i])) + 1;
+      if (l > lvl[d.id] && l <= list.length) { lvl[d.id] = l; c = 1; }
+      if (p.length > 1) {
+        const m = Math.max(lvl[p[0]], lvl[p[1]]);
+        p.forEach(i => { if (lvl[i] < m && m < list.length) { lvl[i] = m; c = 1; } });
       }
-      rows.push(`<div class="n">${mbox}<div class="par">${kids.sort(byName).map(k => node(k.id)).join('')}</div></div>`);
-    }
-    return rows.length ? `<div class="par">${rows.join('')}</div>` : '';
+    });
   }
-  function node(id) {
-    if (placed.has(id)) return `<div class="n">${stub(id)}</div>`;
-    placed.add(id);
-    return `<div class="n">${box(id)}${mates(id)}</div>`;
-  }
-  const rank = { M: 0, F: 1, U: 2 };
-  dragons.filter(d => !known(d)).sort((a, b) => rank[a.sex] - rank[b.sex] || byName(a, b))
-    .forEach(d => { if (!placed.has(d.id)) out.push(node(d.id)); });
-  dragons.forEach(d => {            // пары, которые не попали под своих родителей
-    const r = mates(d.id);
-    if (r) { placed.add(d.id); out.push(`<div class="n">${stub(d.id)}${r}</div>`); }
+  // семьи: пара (или один родитель) → дети
+  const fam = new Map();
+  list.forEach(d => {
+    if (!P(d).length) return;
+    const k = (S.has(d.sire_id) ? d.sire_id : '') + '|' + (S.has(d.dam_id) ? d.dam_id : '');
+    if (!fam.has(k)) fam.set(k, []);
+    fam.get(k).push(d.id);
   });
-  dragons.forEach(d => { if (!placed.has(d.id)) out.push(node(d.id)); });
-  return `<div class="forest">${out.join('')}</div>`;
+  const pos = {}, done = new Set(), hasPar = id => P(byId[id]).length > 0;
+  function place(id) {
+    pos[id] = { x: 0 }; const ids = [id]; let cur = 0;
+    [...fam].filter(([k]) => k.split('|').includes(id) && !done.has(k)).forEach(([k, kids], i) => {
+      done.add(k);
+      const mate = k.split('|').filter(Boolean).find(p => p !== id);
+      let kw = 0; const kidIds = [];
+      kids.slice().sort((a, b) => byName(byId[a], byId[b])).forEach(kid => {
+        if (pos[kid]) return;
+        const r = place(kid); r.ids.forEach(j => pos[j].x += kw); kw += r.w; kidIds.push(...r.ids);
+      });
+      const card = mate && !pos[mate] && !hasPar(mate);   // партнёр без своих предков ставится рядом
+      const w = Math.max(kw, card ? 2 : 1), cc = cur + w / 2;
+      kidIds.forEach(j => pos[j].x += cur + (w - kw) / 2);
+      if (i === 0) pos[id].x = card ? cc - 1 : cc - .5;
+      if (card) { pos[mate] = { x: i === 0 ? cc : cc - .5 }; ids.push(mate); }
+      ids.push(...kidIds); cur += w;
+    });
+    return { w: cur || 1, ids };
+  }
+  let X = 0; const rank = { M: 0, F: 1, U: 2 };
+  const add = id => { if (pos[id]) return; const r = place(id); r.ids.forEach(j => pos[j].x += X); X += r.w + .4; };
+  list.filter(d => !hasPar(d.id)).sort((a, b) => rank[a.sex] - rank[b.sex] || byName(a, b)).forEach(d => add(d.id));
+  list.forEach(d => add(d.id));
+
+  const px = id => pos[id].x * CW + PAD, py = id => lvl[id] * RH + PAD, cx = id => px(id) + CARD / 2;
+  let path = '', dots = '';
+  fam.forEach((kids, k) => {
+    const ps = k.split('|').filter(Boolean), bus = Math.max(...ps.map(py)) + CH + (RH - CH) / 2;
+    let jx, jy;
+    if (ps.length > 1) {
+      jx = (cx(ps[0]) + cx(ps[1])) / 2; jy = py(ps[0]) + CH / 2;
+      path += `M${cx(ps[0])} ${jy}H${cx(ps[1])}`; dots += `<circle cx="${jx}" cy="${jy}" r="4"/>`;
+    } else { jx = cx(ps[0]); jy = py(ps[0]) + CH; }
+    const xs = kids.map(cx).concat(jx);
+    path += `M${jx} ${jy}V${bus}M${Math.min(...xs)} ${bus}H${Math.max(...xs)}` + kids.map(i => `M${cx(i)} ${bus}V${py(i)}`).join('');
+  });
+  const W = X * CW + PAD * 2, H = (Math.max(...Object.values(lvl)) + 1) * RH + PAD * 2 - (RH - CH);
+  return { W, H, html: `<svg class="lines" width="${W}" height="${H}"><path d="${path}"/>${dots}</svg>` + list.map(d => box(d.id, px(d.id), py(d.id))).join('') };
 }
 
-function showAll() {
-  sel = null; renderList(); renderTree(); closeDrawers();
+// выбранный дракон: предки, потомки и их партнёры
+function relatives(id) {
+  const S = new Set(), D = new Set();
+  (function up(i, dp) { const d = byId[i]; if (!d || S.has(i) || dp > GENERATIONS) return; S.add(i); up(d.sire_id, dp + 1); up(d.dam_id, dp + 1); })(id, 0);
+  (function down(i) {
+    if (D.has(i)) return; D.add(i);
+    dragons.forEach(k => { if (k.sire_id === i || k.dam_id === i) { S.add(k.id); [k.sire_id, k.dam_id].forEach(p => byId[p] && S.add(p)); down(k.id); } });
+  })(id);
+  return dragons.filter(d => S.has(d.id));
 }
+
+function showAll() { sel = null; renderList(); renderTree(); closeDrawers(); }
 
 function renderTree() {
-  const d = byId[sel];
-  if (!d) {
-    $('treeTitle').textContent = 'Вся родословная';
-    $('kids').innerHTML = '';
-    $('tree').innerHTML = dragons.length
-      ? forest()
-      : '<div class="sm">Пока никого нет.</div>';
-    fit(); return;
-  }
-  $('treeTitle').textContent = 'Родословная: ' + d.name;
-  $('tree').innerHTML = node(sel, 0, new Set());
-  fit();
-  const kids = dragons.filter(k => k.sire_id === sel || k.dam_id === sel);
-  $('kids').innerHTML = kids.length
-    ? `<h2 style="margin-top:1rem">Потомки</h2><div class="row">${kids.map(k => `<span class="item ${k.sex}" data-id="${k.id}"><span class="dot"></span>${esc(k.name)}</span>`).join('')}</div>`
-    : '';
+  const d = byId[sel], list = d ? relatives(sel) : dragons, t = $('tree');
+  $('treeTitle').textContent = d ? 'Родословная: ' + d.name : 'Вся родословная';
+  if (!list.length) { t.style.width = t.style.height = ''; t.innerHTML = '<div class="sm" style="padding:1.2rem">Пока никого нет.</div>'; fit(); return; }
+  const g = graph(list);
+  t.style.width = g.W + 'px'; t.style.height = g.H + 'px'; t.innerHTML = g.html; fit();
 }
 
-function pick(id) {
-  sel = id; renderList(); renderTree(); closeDrawers();
-}
+function pick(id) { sel = id; renderList(); renderTree(); closeDrawers(); }
 
 function edit(id) {
   const d = byId[id]; editId = d ? d.id : null;
@@ -273,6 +297,71 @@ async function remove() {
   sel = null; editId = null; await load(); edit(null);
 }
 
+// ---------- История клана (таблица clan_history в Supabase) ----------
+let chs = [], cur = null, ed = false, storyLoaded = false;
+
+async function loadStory() {
+  const { data, error } = await sb.from('clan_history').select('*').order('created_at');
+  if (error) { $('chap').innerHTML = `<p class="msg">Не удалось загрузить историю: ${esc(error.message)}. Если таблицы clan_history ещё нет, создайте её в Supabase (SQL Editor).</p>`; return; }
+  chs = data; if (!chs.some(c => c.id === cur)) cur = chs[0]?.id ?? null;
+  renderStory();
+}
+
+function renderStory() {
+  $('addCh').classList.toggle('hide', !user);
+  $('toc').innerHTML = chs.map(c => `<button class="${c.id === cur && ed !== 'new' ? 'on' : ''}" data-ch="${c.id}">${esc(c.title)}</button>`).join('');
+  const c = chs.find(x => x.id === cur);
+  if (ed && user) {
+    const n = ed === 'new';
+    $('chap').innerHTML = `<label>Название главы</label><input id="ct" value="${n ? '' : esc(c.title)}">
+      <label>Текст (пустая строка — новый абзац)</label><textarea id="cb" rows="18">${n ? '' : esc(c.body)}</textarea>
+      <div class="row"><button class="pri" id="csave">Сохранить</button><button id="ccancel">Отмена</button>${n ? '' : '<button id="cdel">Удалить главу</button>'}</div><div class="msg" id="cm"></div>`;
+  } else if (c) {
+    $('chap').innerHTML = `<h2>${esc(c.title)}</h2>` + (c.body.trim() ? c.body.trim().split(/\n{2,}/).map(p => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('') : '<p class="sm">Глава пока пустая.</p>')
+      + (user ? '<button id="cedit">Изменить главу</button>' : '');
+  } else {
+    $('chap').innerHTML = `<p class="sm">${user ? 'Историю ещё никто не писал. Нажмите «+ Новая глава».' : 'История клана пока не написана.'}</p>`;
+  }
+}
+
+async function saveCh() {
+  const title = $('ct').value.trim(), body = $('cb').value;
+  if (!title) { $('cm').textContent = 'Введите название главы.'; return; }
+  const q = ed === 'new' ? sb.from('clan_history').insert({ title, body }).select().single()
+                         : sb.from('clan_history').update({ title, body }).eq('id', cur).select().single();
+  const { data, error } = await q;
+  if (error) { $('cm').textContent = 'Не удалось сохранить: ' + error.message; return; }
+  cur = data.id; ed = false; loadStory();
+}
+
+async function delCh() {
+  if (!confirm('Удалить главу целиком?')) return;
+  const { error } = await sb.from('clan_history').delete().eq('id', cur);
+  if (error) { $('cm').textContent = 'Не удалось удалить: ' + error.message; return; }
+  cur = null; ed = false; loadStory();
+}
+
+$('storyView').addEventListener('click', e => {
+  const t = e.target, ch = t.closest('[data-ch]');
+  if (ch) { cur = ch.dataset.ch; ed = false; renderStory(); }
+  else if (t.id === 'addCh') { ed = 'new'; renderStory(); $('ct').focus(); }
+  else if (t.id === 'cedit') { ed = cur; renderStory(); }
+  else if (t.id === 'csave') saveCh();
+  else if (t.id === 'cdel') delCh();
+  else if (t.id === 'ccancel') { ed = false; renderStory(); }
+});
+
+function tab(t) {
+  const s = t === 'story';
+  document.body.classList.toggle('story', s);
+  $('treeView').classList.toggle('hide', s); $('storyView').classList.toggle('hide', !s);
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
+  closeDrawers();
+  if (!s) fit(); else if (!storyLoaded) { storyLoaded = true; loadStory(); }
+}
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => tab(b.dataset.tab));
+
+// ---------- Вход ----------
 function renderAuth() {
   $('newBtn').classList.toggle('hide', !user); updateEditBtn(); if (!user) closeDrawers();
   $('auth').innerHTML = user
@@ -283,6 +372,7 @@ function renderAuth() {
     const { error } = await sb.auth.signInWithPassword({ email: $('em').value, password: $('pw').value });
     if (error) alert('Не удалось войти: ' + error.message);
   };
+  if (storyLoaded) { if (!user) ed = false; renderStory(); }
 }
 
 document.addEventListener('click', e => {
@@ -290,20 +380,21 @@ document.addEventListener('click', e => {
 });
 $('q').oninput = renderList;
 $('save').onclick = save; $('del').onclick = remove; $('reset').onclick = () => edit(null);
+
 // Перемещение и масштаб: мышь (перетаскивание, колесо), тач (один палец, щипок), кнопки
-let z = 1, px = 0, py = 0, moved = false, total = 0, startD = 0, startZ = 1;
+let z = 1, px0 = 0, py0 = 0, moved = false, total = 0, startD = 0, startZ = 1;
 const view = $('view'), ptrs = new Map();
-const apply = () => { $('tree').style.transform = `translate(${px}px,${py}px) scale(${z})`; };
+const apply = () => { $('tree').style.transform = `translate(${px0}px,${py0}px) scale(${z})`; };
 function zoomAt(f, cx, cy) {
   const nz = Math.min(3, Math.max(0.15, z * f));
-  px = cx - (cx - px) * nz / z; py = cy - (cy - py) * nz / z; z = nz; apply();
+  px0 = cx - (cx - px0) * nz / z; py0 = cy - (cy - py0) * nz / z; z = nz; apply();
 }
 function fit() {
   const t = $('tree'); t.style.transform = 'none';
   const w = t.offsetWidth, h = t.offsetHeight;
   if (!w || !h) return;
   z = Math.max(0.15, Math.min(1, view.clientWidth / w, view.clientHeight / h));
-  px = (view.clientWidth - w * z) / 2; py = Math.max(10, (view.clientHeight - h * z) / 2); apply();
+  px0 = (view.clientWidth - w * z) / 2; py0 = Math.max(10, (view.clientHeight - h * z) / 2); apply();
 }
 view.addEventListener('wheel', e => {
   e.preventDefault();
@@ -318,7 +409,7 @@ $('fit').onclick = fit;
 $('all').onclick = showAll;
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
-  if (!$('scrim').classList.contains('hide')) closeDrawers(); else showAll();
+  if (!$('scrim').classList.contains('hide')) closeDrawers(); else if (!document.body.classList.contains('story')) showAll();
 });
 $('openList').onclick = () => openDrawer('listPanel');
 $('newBtn').onclick = () => { edit(null); openDrawer('formBox'); };
@@ -337,7 +428,7 @@ window.addEventListener('pointermove', e => {
   if (ptrs.size === 1) {
     total += Math.abs(dx) + Math.abs(dy);
     if (total > 5) moved = true;
-    px += dx; py += dy; apply();
+    px0 += dx; py0 += dy; apply();
   } else if (ptrs.size === 2) {
     const [a, b] = [...ptrs.values()], r = view.getBoundingClientRect();
     zoomAt(startZ * Math.hypot(a.x - b.x, a.y - b.y) / startD / z, (a.x + b.x) / 2 - r.left, (a.y + b.y) / 2 - r.top);
