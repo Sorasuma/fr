@@ -40,6 +40,8 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .pic{width:3rem;height:3rem;object-fit:contain;flex:none;border-radius:6px;pointer-events:none}
 .root .pic{width:5rem;height:5rem}
 .txt{min-width:0}
+.th{width:1.9rem;height:1.9rem;object-fit:contain;flex:none;pointer-events:none}
+.prev{display:block;max-height:130px;max-width:100%;object-fit:contain;margin:0 0 .4rem;border-radius:6px}
 .n{display:flex;align-items:center;flex:1;gap:.7rem}
 .par{display:flex;flex-direction:column;flex:1}
 .tree .n .n{min-height:4rem}
@@ -72,6 +74,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
       <label>Отец</label><select id="sire"></select>
       <label>Мать</label><select id="dam"></select>
       <label>Ссылка на изображение</label><input id="img" placeholder="https://...">
+      <img id="prev" class="prev hide" alt="" referrerpolicy="no-referrer"><div class="msg" id="prevMsg"></div>
       <label>Заметки</label><textarea id="notes" rows="2"></textarea>
       <div class="row"><button class="pri" id="save">Сохранить</button><button id="reset">Очистить</button><button id="del" class="hide">Удалить</button></div>
       <div class="msg" id="msg"></div>
@@ -109,7 +112,7 @@ function renderList() {
   const q = $('q').value.trim().toLowerCase();
   const rows = dragons.filter(d => d.name.toLowerCase().includes(q));
   $('list').innerHTML = rows.length ? rows.map(d =>
-    `<div class="item ${d.sex} ${d.id === sel ? 'on' : ''}" data-id="${d.id}"><span class="dot"></span><span class="nm">${esc(d.name)}</span></div>`
+    `<div class="item ${d.sex} ${d.id === sel ? 'on' : ''}" data-id="${d.id}"><span class="dot"></span>${d.image_url ? `<img class="th" src="${esc(d.image_url)}" alt="" referrerpolicy="no-referrer" loading="lazy" onerror="this.remove()">` : ''}<span class="nm">${esc(d.name)}</span></div>`
   ).join('') : '<div class="sm">Пока никого нет. Войдите и добавьте первого дракона.</div>';
 }
 
@@ -124,7 +127,7 @@ function fillSelects() {
 function box(id, root) {
   const d = byId[id];
   if (!d) return `<div class="box empty U"><span class="sm">неизвестен</span></div>`;
-  const pic = d.image_url ? `<img class="pic" src="${esc(d.image_url)}" alt="" draggable="false" onerror="this.remove()">` : '';
+  const pic = d.image_url ? `<img class="pic" src="${esc(d.image_url)}" alt="" referrerpolicy="no-referrer" draggable="false" onerror="this.remove()">` : '';
   return `<div class="box ${d.sex} ${root ? 'root' : ''}" data-id="${d.id}">${pic}
     <div class="txt"><div class="nm">${esc(d.name)}</div>${d.notes ? `<div class="sm">${esc(d.notes)}</div>` : ''}</div></div>`;
 }
@@ -161,8 +164,18 @@ function edit(id) {
   $('name').value = d?.name ?? ''; $('sex').value = d?.sex ?? 'M';
   $('sire').value = d?.sire_id ?? ''; $('dam').value = d?.dam_id ?? '';
   $('img').value = d?.image_url ?? ''; $('notes').value = d?.notes ?? '';
-  $('del').classList.toggle('hide', !d); $('msg').textContent = '';
+  $('del').classList.toggle('hide', !d); $('msg').textContent = ''; preview();
 }
+
+function preview() {
+  const u = $('img').value.trim(), im = $('prev'), m = $('prevMsg');
+  m.textContent = '';
+  if (!u) { im.classList.add('hide'); return; }
+  im.onload = () => { im.classList.remove('hide'); m.textContent = ''; };
+  im.onerror = () => { im.classList.add('hide'); m.textContent = 'По этой ссылке картинка не открывается. Нужна прямая ссылка на файл изображения.'; };
+  im.src = u;
+}
+$('img').oninput = preview;
 
 async function save() {
   const name = $('name').value.trim();
