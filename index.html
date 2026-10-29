@@ -40,6 +40,8 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .pic{width:3rem;height:3rem;object-fit:contain;flex:none;border-radius:6px;pointer-events:none}
 .root .pic{width:5rem;height:5rem}
 .txt{min-width:0}
+.forest{display:flex;flex-direction:column;gap:1.2rem}
+.stub .box{opacity:.55;border-style:dashed}
 .th{width:1.9rem;height:1.9rem;object-fit:contain;flex:none;pointer-events:none}
 .prev{display:block;max-height:130px;max-width:100%;object-fit:contain;margin:0 0 .4rem;border-radius:6px}
 .n{display:flex;align-items:center;flex:1;gap:.7rem}
@@ -83,7 +85,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   <section>
     <h2 id="treeTitle">Выберите дракона</h2>
     <div class="view" id="view">
-      <div class="ctl" id="ctl"><button id="zin" title="Приблизить" aria-label="Приблизить">+</button><button id="zout" title="Отдалить" aria-label="Отдалить">−</button><button id="fit" title="Показать всё">Вместить</button></div>
+      <div class="ctl" id="ctl"><button id="all" title="Показать всех драконов">Вся родословная</button><button id="zin" title="Приблизить" aria-label="Приблизить">+</button><button id="zout" title="Отдалить" aria-label="Отдалить">−</button><button id="fit" title="Показать всё">Вместить</button></div>
       <div id="tree" class="tree canvas"></div>
     </div>
     <div id="kids"></div>
@@ -140,9 +142,33 @@ function node(id, depth, seen) {
   return `<div class="n">${box(id, depth === 0)}<div class="par">${node(d.sire_id, depth + 1, s)}${node(d.dam_id, depth + 1, s)}</div></div>`;
 }
 
+// Вся родословная: от предков к потомкам. Ребёнок показан полностью под отцом (или под матерью, если отца нет),
+// а под вторым родителем стоит бледная карточка-ссылка.
+function fullNode(id, seen, stub) {
+  if (stub || seen.has(id)) return `<div class="n stub">${box(id)}</div>`;
+  const s = new Set(seen).add(id);
+  const kids = dragons.filter(k => k.sire_id === id || k.dam_id === id);
+  const main = k => (byId[k.sire_id] ? k.sire_id : k.dam_id) === id;
+  const inner = kids.map(k => fullNode(k.id, s, !main(k))).join('');
+  return `<div class="n">${box(id)}${inner ? `<div class="par">${inner}</div>` : ''}</div>`;
+}
+
+function showAll() {
+  sel = null; renderList(); renderTree();
+  if (user) edit(null);
+}
+
 function renderTree() {
   const d = byId[sel];
-  if (!d) { $('tree').innerHTML = ''; $('kids').innerHTML = ''; $('treeTitle').textContent = 'Выберите дракона'; return; }
+  if (!d) {
+    $('treeTitle').textContent = 'Вся родословная';
+    $('kids').innerHTML = '';
+    const roots = dragons.filter(x => !byId[x.sire_id] && !byId[x.dam_id]);
+    $('tree').innerHTML = dragons.length
+      ? `<div class="forest">${roots.map(r => fullNode(r.id, new Set())).join('')}</div>`
+      : '<div class="sm">Пока никого нет.</div>';
+    fit(); return;
+  }
   $('treeTitle').textContent = 'Родословная: ' + d.name;
   $('tree').innerHTML = node(sel, 0, new Set());
   fit();
@@ -238,6 +264,8 @@ const mid = () => ({ x: view.clientWidth / 2, y: view.clientHeight / 2 });
 $('zin').onclick = () => { const m = mid(); zoomAt(1.25, m.x, m.y); };
 $('zout').onclick = () => { const m = mid(); zoomAt(1 / 1.25, m.x, m.y); };
 $('fit').onclick = fit;
+$('all').onclick = showAll;
+document.addEventListener('keydown', e => { if (e.key === 'Escape') showAll(); });
 view.addEventListener('pointerdown', e => {
   ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
   moved = false; total = 0; view.classList.add('drag');
