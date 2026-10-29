@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Родословная драконов</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya:wght@500;700&family=Alegreya+Sans:wght@400;500&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<style>
+:root{--bg:#e9eeea;--panel:#f6f8f6;--ink:#1f3a3d;--mute:#5d7274;--line:#bccac6;--m:#3e5c76;--f:#9b4f63;--btn:#1f3a3d;--btnt:#f6f8f6}
+@media(prefers-color-scheme:dark){:root{--bg:#14211f;--panel:#1c2d2b;--ink:#e3ece8;--mute:#93a9a5;--line:#34504b;--m:#7ea3c4;--f:#d98aa0;--btn:#e3ece8;--btnt:#14211f}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.5 "Alegreya Sans",system-ui,sans-serif;padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0)}
+h1,h2,.nm{font-family:Alegreya,Georgia,serif}
+h1{font-size:2rem;margin:0}
+h2{font-size:1.25rem;margin:0 0 .6rem}
+header{display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;padding:1.2rem 1.4rem;border-bottom:1px solid var(--line)}
+main{display:grid;grid-template-columns:320px 1fr;gap:1.4rem;padding:1.4rem;max-width:1400px;margin:auto}
+@media(max-width:820px){main{grid-template-columns:1fr}}
+section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:1rem}
+input,select,textarea,button{font:inherit;color:inherit}
+input,select,textarea{width:100%;padding:.45rem .6rem;border:1px solid var(--line);border-radius:6px;background:var(--bg);margin-bottom:.6rem}
+label{font-size:.9rem;color:var(--mute);display:block}
+button{cursor:pointer;border:1px solid var(--line);background:transparent;border-radius:6px;padding:.4rem .8rem}
+button.pri{background:var(--btn);color:var(--btnt);border-color:var(--btn)}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--m);outline-offset:1px}
+.row{display:flex;gap:.5rem;flex-wrap:wrap}
+.list{max-height:340px;overflow:auto;margin-top:.6rem}
+.item{display:flex;align-items:center;gap:.5rem;padding:.35rem .4rem;border-radius:6px;cursor:pointer}
+.item:hover,.item.on{background:var(--bg)}
+.dot{width:.7rem;height:.7rem;border-radius:50%;flex:none}
+.M{--c:var(--m)}.F{--c:var(--f)}.U{--c:var(--mute)}
+.dot{background:var(--c)}
+.tree{overflow-x:auto;padding-bottom:.5rem}
+.n{display:flex;align-items:center;flex:1;gap:.7rem}
+.par{display:flex;flex-direction:column;flex:1}
+.tree .n .n{min-height:3.4rem}
+.box{flex:none;width:11rem;padding:.35rem .6rem;border:1px solid var(--line);border-left:4px solid var(--c);border-radius:6px;background:var(--bg);margin:.2rem 0;cursor:pointer}
+.box.empty{border-style:dashed;border-left-style:dashed;color:var(--mute);cursor:default}
+.box.root{width:12.5rem;background:var(--panel)}
+.nm{font-weight:700;line-height:1.2;overflow-wrap:anywhere}
+.sm{font-size:.8rem;color:var(--mute)}
+.msg{color:var(--f);min-height:1.2rem;font-size:.9rem}
+.hide{display:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>Родословная драконов</h1>
+  <div id="auth" class="row"></div>
+</header>
+<main>
+  <div>
+    <section>
+      <h2>Драконы</h2>
+      <input id="q" placeholder="Поиск по имени">
+      <div id="list" class="list"></div>
+    </section>
+    <section id="formBox" class="hide" style="margin-top:1rem">
+      <h2 id="formTitle">Новый дракон</h2>
+      <label>Имя</label><input id="name">
+      <label>Пол</label>
+      <select id="sex"><option value="M">Самец</option><option value="F">Самка</option><option value="U">Не указан</option></select>
+      <label>Отец</label><select id="sire"></select>
+      <label>Мать</label><select id="dam"></select>
+      <label>Ссылка на изображение</label><input id="img" placeholder="https://...">
+      <label>Заметки</label><textarea id="notes" rows="2"></textarea>
+      <div class="row"><button class="pri" id="save">Сохранить</button><button id="reset">Очистить</button><button id="del" class="hide">Удалить</button></div>
+      <div class="msg" id="msg"></div>
+    </section>
+  </div>
+  <section>
+    <h2 id="treeTitle">Выберите дракона</h2>
+    <div id="tree" class="tree"></div>
+    <div id="kids"></div>
+  </section>
+</main>
+
+<script>
+// 1. Вставьте данные своего проекта Supabase (Project Settings → API)
+const SUPABASE_URL = 'https://YOUR-PROJECT.supabase.co';
+const SUPABASE_KEY = 'YOUR-ANON-PUBLIC-KEY';
+const GENERATIONS = 4; // сколько поколений предков показывать
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let dragons = [], byId = {}, sel = null, editId = null, user = null;
+
+async function load() {
+  const { data, error } = await sb.from('dragons').select('*').order('name');
+  if (error) { $('list').textContent = 'Ошибка загрузки: ' + error.message; return; }
+  dragons = data; byId = Object.fromEntries(data.map(d => [d.id, d]));
+  renderList(); fillSelects(); renderTree();
+}
+
+function renderList() {
+  const q = $('q').value.trim().toLowerCase();
+  const rows = dragons.filter(d => d.name.toLowerCase().includes(q));
+  $('list').innerHTML = rows.length ? rows.map(d =>
+    `<div class="item ${d.sex} ${d.id === sel ? 'on' : ''}" data-id="${d.id}"><span class="dot"></span><span class="nm">${esc(d.name)}</span></div>`
+  ).join('') : '<div class="sm">Пока никого нет. Войдите и добавьте первого дракона.</div>';
+}
+
+function fillSelects() {
+  const opt = sex => '<option value="">— неизвестен —</option>' +
+    dragons.filter(d => d.sex === sex && d.id !== editId).map(d => `<option value="${d.id}">${esc(d.name)}</option>`).join('');
+  const s = $('sire').value, m = $('dam').value;
+  $('sire').innerHTML = opt('M'); $('dam').innerHTML = opt('F');
+  $('sire').value = s; $('dam').value = m;
+}
+
+function box(id, root) {
+  const d = byId[id];
+  if (!d) return `<div class="box empty U"><span class="sm">неизвестен</span></div>`;
+  return `<div class="box ${d.sex} ${root ? 'root' : ''}" data-id="${d.id}">
+    <div class="nm">${esc(d.name)}</div>${d.notes ? `<div class="sm">${esc(d.notes)}</div>` : ''}</div>`;
+}
+
+function node(id, depth, seen) {
+  const d = byId[id];
+  const loop = d && seen.has(id); // защита от зацикливания
+  if (!d || loop || depth >= GENERATIONS) return `<div class="n">${box(loop ? null : id)}</div>`;
+  const s = new Set(seen).add(id);
+  return `<div class="n">${box(id, depth === 0)}<div class="par">${node(d.sire_id, depth + 1, s)}${node(d.dam_id, depth + 1, s)}</div></div>`;
+}
+
+function renderTree() {
+  const d = byId[sel];
+  if (!d) { $('tree').innerHTML = ''; $('kids').innerHTML = ''; $('treeTitle').textContent = 'Выберите дракона'; return; }
+  $('treeTitle').textContent = 'Родословная: ' + d.name;
+  $('tree').innerHTML = node(sel, 0, new Set());
+  const kids = dragons.filter(k => k.sire_id === sel || k.dam_id === sel);
+  $('kids').innerHTML = kids.length
+    ? `<h2 style="margin-top:1rem">Потомки</h2><div class="row">${kids.map(k => `<span class="item ${k.sex}" data-id="${k.id}"><span class="dot"></span>${esc(k.name)}</span>`).join('')}</div>`
+    : '';
+}
+
+function pick(id) {
+  sel = id; renderList(); renderTree();
+  if (user) edit(id);
+}
+
+function edit(id) {
+  const d = byId[id]; editId = d ? d.id : null;
+  fillSelects();
+  $('formTitle').textContent = d ? 'Изменить: ' + d.name : 'Новый дракон';
+  $('name').value = d?.name ?? ''; $('sex').value = d?.sex ?? 'M';
+  $('sire').value = d?.sire_id ?? ''; $('dam').value = d?.dam_id ?? '';
+  $('img').value = d?.image_url ?? ''; $('notes').value = d?.notes ?? '';
+  $('del').classList.toggle('hide', !d); $('msg').textContent = '';
+}
+
+async function save() {
+  const name = $('name').value.trim();
+  if (!name) { $('msg').textContent = 'Введите имя дракона.'; return; }
+  const row = { name, sex: $('sex').value, sire_id: $('sire').value || null, dam_id: $('dam').value || null,
+    image_url: $('img').value.trim() || null, notes: $('notes').value.trim() || null };
+  const q = editId ? sb.from('dragons').update(row).eq('id', editId).select().single() : sb.from('dragons').insert(row).select().single();
+  const { data, error } = await q;
+  if (error) { $('msg').textContent = 'Не удалось сохранить: ' + error.message; return; }
+  sel = data.id; await load(); edit(null);
+  $('msg').textContent = 'Сохранено.';
+}
+
+async function remove() {
+  if (!editId || !confirm('Удалить дракона? У его детей родитель станет «неизвестен».')) return;
+  const { error } = await sb.from('dragons').delete().eq('id', editId);
+  if (error) { $('msg').textContent = 'Не удалось удалить: ' + error.message; return; }
+  sel = null; editId = null; await load(); edit(null);
+}
+
+function renderAuth() {
+  $('formBox').classList.toggle('hide', !user);
+  $('auth').innerHTML = user
+    ? `<span class="sm">${esc(user.email)}</span><button id="out">Выйти</button>`
+    : `<input id="em" type="email" placeholder="Почта" style="width:11rem;margin:0"><input id="pw" type="password" placeholder="Пароль" style="width:9rem;margin:0"><button class="pri" id="in">Войти</button>`;
+  if (user) $('out').onclick = () => sb.auth.signOut();
+  else $('in').onclick = async () => {
+    const { error } = await sb.auth.signInWithPassword({ email: $('em').value, password: $('pw').value });
+    if (error) alert('Не удалось войти: ' + error.message);
+  };
+}
+
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-id]'); if (t) pick(t.dataset.id);
+});
+$('q').oninput = renderList;
+$('save').onclick = save; $('del').onclick = remove; $('reset').onclick = () => edit(null);
+sb.auth.onAuthStateChange((_e, s) => { user = s?.user ?? null; renderAuth(); });
+sb.auth.getSession().then(({ data }) => { user = data.session?.user ?? null; renderAuth(); });
+load();
+</script>
+</body>
+</html>
