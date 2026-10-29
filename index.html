@@ -23,7 +23,7 @@ header{display:flex;justify-content:space-between;align-items:center;gap:1rem;fl
 .tabs{display:flex;gap:.3rem}
 .tabs button{border:0;border-bottom:2px solid transparent;border-radius:0;font:700 1.15rem Alegreya,Georgia,serif;color:var(--mute);padding:.3rem .8rem}
 .tabs button.on{color:var(--gold);border-color:var(--gold)}
-body.story .tonly{display:none}
+body.onstory .tonly{display:none}
 main{padding:1.2rem 1.4rem;max-width:1700px;margin:auto}
 section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:1rem}
 input,select,textarea,button{font:inherit;color:inherit}
@@ -73,6 +73,8 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 #chap h2{font-size:1.8rem;color:var(--gold)}
 #chap p{margin:0 0 1em}
 #chap textarea{font-size:1.05rem;line-height:1.6}
+a.men{color:var(--c);text-decoration:none;border-bottom:1px dotted var(--c);cursor:pointer}
+.sug{margin:-.3rem 0 .6rem}.sug button{display:flex;align-items:center;gap:.4rem;padding:.2rem .6rem}
 @media(max-width:700px){.story{grid-template-columns:1fr}#toc{flex-direction:row;flex-wrap:wrap}}
 .hide{display:none!important}
 </style>
@@ -135,6 +137,7 @@ async function load() {
   if (error) { $('list').textContent = 'Ошибка загрузки: ' + error.message; return; }
   dragons = data; byId = Object.fromEntries(data.map(d => [d.id, d]));
   renderList(); fillSelects(); renderTree();
+  if (storyLoaded && !ed) renderStory();
 }
 
 function updateEditBtn() { $('editBtn').classList.toggle('hide', !(user && sel)); }
@@ -194,6 +197,8 @@ function graph(list) {
     if (!fam.has(k)) fam.set(k, []);
     fam.get(k).push(d.id);
   });
+  const inFam = new Set(); fam.forEach((_, k) => k.split('|').forEach(i => i && inFam.add(i)));
+  const lone = list.filter(d => !P(d).length && !inFam.has(d.id)), loneIds = new Set(lone.map(d => d.id));
   const pos = {}, done = new Set(), hasPar = id => P(byId[id]).length > 0;
   function place(id) {
     pos[id] = { x: 0 }; const ids = [id]; let cur = 0;
@@ -216,8 +221,14 @@ function graph(list) {
   }
   let X = 0; const rank = { M: 0, F: 1, U: 2 };
   const add = id => { if (pos[id]) return; const r = place(id); r.ids.forEach(j => pos[j].x += X); X += r.w + .4; };
-  list.filter(d => !hasPar(d.id)).sort((a, b) => rank[a.sex] - rank[b.sex] || byName(a, b)).forEach(d => add(d.id));
-  list.forEach(d => add(d.id));
+  list.filter(d => !hasPar(d.id) && !loneIds.has(d.id)).sort((a, b) => rank[a.sex] - rank[b.sex] || byName(a, b)).forEach(d => add(d.id));
+  list.filter(d => !loneIds.has(d.id)).forEach(d => add(d.id));
+  if (lone.length) {   // драконы без родственных связей — сеткой под основной схемой
+    const base = Object.keys(pos).length ? Math.max(...Object.keys(pos).map(i => lvl[i])) + 1 : 0;
+    const cols = Math.max(3, Math.ceil(X) || Math.ceil(Math.sqrt(lone.length) * 1.6));
+    lone.sort(byName).forEach((d, i) => { pos[d.id] = { x: i % cols }; lvl[d.id] = base + Math.floor(i / cols); });
+    X = Math.max(X, Math.min(cols, lone.length));
+  }
 
   const px = id => pos[id].x * CW + PAD, py = id => lvl[id] * RH + PAD, cx = id => px(id) + CARD / 2;
   let path = '', dots = '';
@@ -314,14 +325,35 @@ function renderStory() {
   if (ed && user) {
     const n = ed === 'new';
     $('chap').innerHTML = `<label>Название главы</label><input id="ct" value="${n ? '' : esc(c.title)}">
-      <label>Текст (пустая строка — новый абзац)</label><textarea id="cb" rows="18">${n ? '' : esc(c.body)}</textarea>
+      <label>Текст (пустая строка — новый абзац). Чтобы сослаться на дракона, напишите @ и начало имени</label><textarea id="cb" rows="18">${n ? '' : esc(c.body)}</textarea><div id="sug" class="sug row hide"></div>
       <div class="row"><button class="pri" id="csave">Сохранить</button><button id="ccancel">Отмена</button>${n ? '' : '<button id="cdel">Удалить главу</button>'}</div><div class="msg" id="cm"></div>`;
   } else if (c) {
-    $('chap').innerHTML = `<h2>${esc(c.title)}</h2>` + (c.body.trim() ? c.body.trim().split(/\n{2,}/).map(p => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('') : '<p class="sm">Глава пока пустая.</p>')
+    $('chap').innerHTML = `<h2>${esc(c.title)}</h2>` + (c.body.trim() ? c.body.trim().split(/\n{2,}/).map(p => `<p>${mentions(esc(p)).replace(/\n/g, '<br>')}</p>`).join('') : '<p class="sm">Глава пока пустая.</p>')
       + (user ? '<button id="cedit">Изменить главу</button>' : '');
   } else {
     $('chap').innerHTML = `<p class="sm">${user ? 'Историю ещё никто не писал. Нажмите «+ Новая глава».' : 'История клана пока не написана.'}</p>`;
   }
+}
+
+// @Имя в тексте становится ссылкой на дракона
+function mentions(h) {
+  if (!dragons.length) return h;
+  const names = dragons.map(d => esc(d.name)).sort((a, b) => b.length - a.length).map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const re = new RegExp('@(' + names.join('|') + ')(?![\\p{L}\\p{N}_])', 'giu');
+  return h.replace(re, (m, n) => {
+    const d = dragons.find(x => esc(x.name).toLowerCase() === n.toLowerCase());
+    return d ? `<a href="#" class="men ${d.sex}" data-m="${d.id}">${esc(d.name)}</a>` : m;
+  });
+}
+
+function sug() {
+  const ta = $('cb'), s = $('sug'); if (!ta || !s) return;
+  const m = ta.value.slice(0, ta.selectionStart).match(/@([^\s@]*)$/u);
+  if (!m) { s.classList.add('hide'); return; }
+  const q = m[1].toLowerCase(), st = d => d.name.toLowerCase().startsWith(q);
+  const r = dragons.filter(d => d.name.toLowerCase().includes(q)).sort((a, b) => st(b) - st(a) || byName(a, b)).slice(0, 8);
+  s.innerHTML = r.map(d => `<button type="button" class="${d.sex}" data-pm="${d.id}"><span class="dot"></span>${esc(d.name)}</button>`).join('');
+  s.classList.toggle('hide', !r.length);
 }
 
 async function saveCh() {
@@ -343,7 +375,14 @@ async function delCh() {
 
 $('storyView').addEventListener('click', e => {
   const t = e.target, ch = t.closest('[data-ch]');
-  if (ch) { cur = ch.dataset.ch; ed = false; renderStory(); }
+  const men = t.closest('[data-m]'), pm = t.closest('[data-pm]');
+  if (men) { e.preventDefault(); tab('tree'); pick(men.dataset.m); }
+  else if (pm) {
+    const ta = $('cb'), p = ta.selectionStart, b = ta.value.slice(0, p).replace(/@[^\s@]*$/u, '@' + byId[pm.dataset.pm].name + ' ');
+    ta.value = b + ta.value.slice(p); ta.selectionStart = ta.selectionEnd = b.length; ta.focus(); sug();
+  }
+  else if (t.id === 'cb') sug();
+  else if (ch) { cur = ch.dataset.ch; ed = false; renderStory(); }
   else if (t.id === 'addCh') { ed = 'new'; renderStory(); $('ct').focus(); }
   else if (t.id === 'cedit') { ed = cur; renderStory(); }
   else if (t.id === 'csave') saveCh();
@@ -351,9 +390,12 @@ $('storyView').addEventListener('click', e => {
   else if (t.id === 'ccancel') { ed = false; renderStory(); }
 });
 
+$('storyView').addEventListener('input', e => { if (e.target.id === 'cb') sug(); });
+$('storyView').addEventListener('keyup', e => { if (e.target.id === 'cb') sug(); });
+
 function tab(t) {
   const s = t === 'story';
-  document.body.classList.toggle('story', s);
+  document.body.classList.toggle('onstory', s);
   $('treeView').classList.toggle('hide', s); $('storyView').classList.toggle('hide', !s);
   document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
   closeDrawers();
@@ -386,14 +428,14 @@ let z = 1, px0 = 0, py0 = 0, moved = false, total = 0, startD = 0, startZ = 1;
 const view = $('view'), ptrs = new Map();
 const apply = () => { $('tree').style.transform = `translate(${px0}px,${py0}px) scale(${z})`; };
 function zoomAt(f, cx, cy) {
-  const nz = Math.min(3, Math.max(0.15, z * f));
+  const nz = Math.min(3, Math.max(0.03, z * f));
   px0 = cx - (cx - px0) * nz / z; py0 = cy - (cy - py0) * nz / z; z = nz; apply();
 }
 function fit() {
   const t = $('tree'); t.style.transform = 'none';
   const w = t.offsetWidth, h = t.offsetHeight;
   if (!w || !h) return;
-  z = Math.max(0.15, Math.min(1, view.clientWidth / w, view.clientHeight / h));
+  z = Math.max(0.03, Math.min(1, view.clientWidth / w, view.clientHeight / h));
   px0 = (view.clientWidth - w * z) / 2; py0 = Math.max(10, (view.clientHeight - h * z) / 2); apply();
 }
 view.addEventListener('wheel', e => {
@@ -409,7 +451,7 @@ $('fit').onclick = fit;
 $('all').onclick = showAll;
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
-  if (!$('scrim').classList.contains('hide')) closeDrawers(); else if (!document.body.classList.contains('story')) showAll();
+  if (!$('scrim').classList.contains('hide')) closeDrawers(); else if (!document.body.classList.contains('onstory')) showAll();
 });
 $('openList').onclick = () => openDrawer('listPanel');
 $('newBtn').onclick = () => { edit(null); openDrawer('formBox'); };
