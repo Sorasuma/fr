@@ -16,8 +16,7 @@ h1,h2,.nm{font-family:Alegreya,Georgia,serif}
 h1{font-size:2rem;margin:0}
 h2{font-size:1.25rem;margin:0 0 .6rem}
 header{display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;padding:1.2rem 1.4rem;border-bottom:1px solid var(--line)}
-main{display:grid;grid-template-columns:320px 1fr;gap:1.4rem;padding:1.4rem;max-width:1400px;margin:auto}
-@media(max-width:820px){main{grid-template-columns:1fr}}
+main{padding:1.2rem 1.4rem;max-width:1700px;margin:auto}
 section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:1rem}
 input,select,textarea,button{font:inherit;color:inherit}
 input,select,textarea{width:100%;padding:.45rem .6rem;border:1px solid var(--line);border-radius:6px;background:var(--bg);margin-bottom:.6rem}
@@ -26,13 +25,13 @@ button{cursor:pointer;border:1px solid var(--line);background:transparent;border
 button.pri{background:var(--btn);color:var(--btnt);border-color:var(--btn)}
 button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--m);outline-offset:1px}
 .row{display:flex;gap:.5rem;flex-wrap:wrap}
-.list{max-height:340px;overflow:auto;margin-top:.6rem}
+.list{margin-top:.2rem}
 .item{display:flex;align-items:center;gap:.5rem;padding:.35rem .4rem;border-radius:6px;cursor:pointer}
 .item:hover,.item.on{background:var(--bg)}
 .dot{width:.7rem;height:.7rem;border-radius:50%;flex:none}
 .M{--c:var(--m)}.F{--c:var(--f)}.U{--c:var(--mute)}
 .dot{background:var(--c)}
-.view{position:relative;height:72vh;min-height:380px;overflow:hidden;border:1px solid var(--line);border-radius:8px;background:var(--bg);touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none}
+.view{position:relative;height:calc(100vh - 12rem);min-height:420px;overflow:hidden;border:1px solid var(--line);border-radius:8px;background:var(--bg);touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none}
 .view.drag{cursor:grabbing}
 .canvas{position:absolute;left:0;top:0;transform-origin:0 0;padding:1.2rem;width:max-content}
 .ctl{position:absolute;right:.6rem;top:.6rem;z-index:2;display:flex;gap:.3rem}
@@ -40,8 +39,18 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .pic{width:3rem;height:3rem;object-fit:contain;flex:none;border-radius:6px;pointer-events:none}
 .root .pic{width:5rem;height:5rem}
 .txt{min-width:0}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:.6rem;margin-bottom:.6rem}
+.bar h2{margin:0}
+.scrim{position:fixed;inset:0;background:rgba(10,20,18,.4);z-index:10}
+.drawer{position:fixed;top:0;bottom:0;width:min(380px,92vw);background:var(--panel);z-index:20;overflow:auto;padding:1rem;padding-top:calc(1rem + env(safe-area-inset-top,0px));padding-bottom:calc(1rem + env(safe-area-inset-bottom,0px))}
+.drawer.left{left:0;border-right:1px solid var(--line)}
+.drawer.right{right:0;border-left:1px solid var(--line)}
+.drawer.hide,.scrim.hide{display:none}
+.dh{display:flex;justify-content:space-between;align-items:center;margin-bottom:.8rem}
+.dh h2{margin:0}
 .forest{display:flex;flex-direction:column;gap:1.2rem}
 .stub .box{opacity:.55;border-style:dashed}
+.mx{flex:none;color:var(--mute);font-size:1.1rem}
 .th{width:1.9rem;height:1.9rem;object-fit:contain;flex:none;pointer-events:none}
 .prev{display:block;max-height:130px;max-width:100%;object-fit:contain;margin:0 0 .4rem;border-radius:6px}
 .n{display:flex;align-items:center;flex:1;gap:.7rem}
@@ -59,31 +68,15 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 <body>
 <header>
   <h1>Родословная драконов</h1>
-  <div id="auth" class="row"></div>
+  <div class="row" style="align-items:center">
+    <button id="openList">Все драконы</button>
+    <button id="newBtn" class="pri hide">+ Новый дракон</button>
+    <div id="auth" class="row"></div>
+  </div>
 </header>
 <main>
-  <div>
-    <section>
-      <h2>Драконы</h2>
-      <input id="q" placeholder="Поиск по имени">
-      <div id="list" class="list"></div>
-    </section>
-    <section id="formBox" class="hide" style="margin-top:1rem">
-      <h2 id="formTitle">Новый дракон</h2>
-      <label>Имя</label><input id="name">
-      <label>Пол</label>
-      <select id="sex"><option value="M">Самец</option><option value="F">Самка</option><option value="U">Не указан</option></select>
-      <label>Отец</label><select id="sire"></select>
-      <label>Мать</label><select id="dam"></select>
-      <label>Ссылка на изображение</label><input id="img" placeholder="https://...">
-      <img id="prev" class="prev hide" alt="" referrerpolicy="no-referrer"><div class="msg" id="prevMsg"></div>
-      <label>Заметки</label><textarea id="notes" rows="2"></textarea>
-      <div class="row"><button class="pri" id="save">Сохранить</button><button id="reset">Очистить</button><button id="del" class="hide">Удалить</button></div>
-      <div class="msg" id="msg"></div>
-    </section>
-  </div>
-  <section>
-    <h2 id="treeTitle">Выберите дракона</h2>
+  <section class="stage">
+    <div class="bar"><h2 id="treeTitle">Вся родословная</h2><button id="editBtn" class="hide">Изменить дракона</button></div>
     <div class="view" id="view">
       <div class="ctl" id="ctl"><button id="all" title="Показать всех драконов">Вся родословная</button><button id="zin" title="Приблизить" aria-label="Приблизить">+</button><button id="zout" title="Отдалить" aria-label="Отдалить">−</button><button id="fit" title="Показать всё">Вместить</button></div>
       <div id="tree" class="tree canvas"></div>
@@ -91,6 +84,25 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
     <div id="kids"></div>
   </section>
 </main>
+<div id="scrim" class="scrim hide"></div>
+<aside id="listPanel" class="drawer left hide" aria-label="Список драконов">
+  <div class="dh"><h2>Все драконы</h2><button data-close aria-label="Закрыть">✕</button></div>
+  <input id="q" placeholder="Поиск по имени">
+  <div id="list" class="list"></div>
+</aside>
+<aside id="formBox" class="drawer right hide" aria-label="Форма дракона">
+  <div class="dh"><h2 id="formTitle">Новый дракон</h2><button data-close aria-label="Закрыть">✕</button></div>
+  <label>Имя</label><input id="name">
+  <label>Пол</label>
+  <select id="sex"><option value="M">Самец</option><option value="F">Самка</option><option value="U">Не указан</option></select>
+  <label>Отец</label><select id="sire"></select>
+  <label>Мать</label><select id="dam"></select>
+  <label>Ссылка на изображение</label><input id="img" placeholder="https://...">
+  <img id="prev" class="prev hide" alt="" referrerpolicy="no-referrer"><div class="msg" id="prevMsg"></div>
+  <label>Заметки</label><textarea id="notes" rows="2"></textarea>
+  <div class="row"><button class="pri" id="save">Сохранить</button><button id="reset">Очистить</button><button id="del" class="hide">Удалить</button></div>
+  <div class="msg" id="msg"></div>
+</aside>
 
 <script>
 // 1. Вставьте данные своего проекта Supabase (Project Settings → API)
@@ -110,7 +122,12 @@ async function load() {
   renderList(); fillSelects(); renderTree();
 }
 
+function updateEditBtn() { $('editBtn').classList.toggle('hide', !(user && sel)); }
+function openDrawer(id) { closeDrawers(); $(id).classList.remove('hide'); $('scrim').classList.remove('hide'); }
+function closeDrawers() { ['listPanel', 'formBox'].forEach(i => $(i).classList.add('hide')); $('scrim').classList.add('hide'); }
+
 function renderList() {
+  updateEditBtn();
   const q = $('q').value.trim().toLowerCase();
   const rows = dragons.filter(d => d.name.toLowerCase().includes(q));
   $('list').innerHTML = rows.length ? rows.map(d =>
@@ -142,20 +159,56 @@ function node(id, depth, seen) {
   return `<div class="n">${box(id, depth === 0)}<div class="par">${node(d.sire_id, depth + 1, s)}${node(d.dam_id, depth + 1, s)}</div></div>`;
 }
 
-// Вся родословная: от предков к потомкам. Ребёнок показан полностью под отцом (или под матерью, если отца нет),
-// а под вторым родителем стоит бледная карточка-ссылка.
-function fullNode(id, seen, stub) {
-  if (stub || seen.has(id)) return `<div class="n stub">${box(id)}</div>`;
-  const s = new Set(seen).add(id);
-  const kids = dragons.filter(k => k.sire_id === id || k.dam_id === id);
-  const main = k => (byId[k.sire_id] ? k.sire_id : k.dam_id) === id;
-  const inner = kids.map(k => fullNode(k.id, s, !main(k))).join('');
-  return `<div class="n">${box(id)}${inner ? `<div class="par">${inner}</div>` : ''}</div>`;
+// Вся родословная: пары родителей рядом, дети справа. Каждый дракон показан один раз полностью;
+// повторные появления (второй партнёр, у которого есть свои предки) — бледные карточки.
+function forest() {
+  const placed = new Set(), done = new Set(), out = [];
+  const byName = (a, b) => a.name.localeCompare(b.name, 'ru');
+  const known = d => byId[d.sire_id] || byId[d.dam_id];
+  const stub = id => `<div class="stub">${box(id)}</div>`;
+  function unitsOf(id) {
+    const m = new Map();
+    dragons.forEach(k => {
+      if (k.sire_id !== id && k.dam_id !== id) return;
+      const key = (k.sire_id || '') + '|' + (k.dam_id || '');
+      if (!m.has(key)) m.set(key, []);
+      m.get(key).push(k);
+    });
+    return [...m];
+  }
+  function mates(id) {
+    const rows = [];
+    for (const [key, kids] of unitsOf(id)) {
+      if (done.has(key)) continue;
+      done.add(key);
+      const [a, b] = key.split('|'), mid = a === id ? b : a, mate = byId[mid];
+      let mbox = '';
+      if (mate) {
+        if (placed.has(mid) || known(mate)) mbox = `<span class="mx">×</span>${stub(mid)}`;
+        else { placed.add(mid); mbox = `<span class="mx">×</span>${box(mid)}`; }
+      }
+      rows.push(`<div class="n">${mbox}<div class="par">${kids.sort(byName).map(k => node(k.id)).join('')}</div></div>`);
+    }
+    return rows.length ? `<div class="par">${rows.join('')}</div>` : '';
+  }
+  function node(id) {
+    if (placed.has(id)) return `<div class="n">${stub(id)}</div>`;
+    placed.add(id);
+    return `<div class="n">${box(id)}${mates(id)}</div>`;
+  }
+  const rank = { M: 0, F: 1, U: 2 };
+  dragons.filter(d => !known(d)).sort((a, b) => rank[a.sex] - rank[b.sex] || byName(a, b))
+    .forEach(d => { if (!placed.has(d.id)) out.push(node(d.id)); });
+  dragons.forEach(d => {            // пары, которые не попали под своих родителей
+    const r = mates(d.id);
+    if (r) { placed.add(d.id); out.push(`<div class="n">${stub(d.id)}${r}</div>`); }
+  });
+  dragons.forEach(d => { if (!placed.has(d.id)) out.push(node(d.id)); });
+  return `<div class="forest">${out.join('')}</div>`;
 }
 
 function showAll() {
-  sel = null; renderList(); renderTree();
-  if (user) edit(null);
+  sel = null; renderList(); renderTree(); closeDrawers();
 }
 
 function renderTree() {
@@ -163,9 +216,8 @@ function renderTree() {
   if (!d) {
     $('treeTitle').textContent = 'Вся родословная';
     $('kids').innerHTML = '';
-    const roots = dragons.filter(x => !byId[x.sire_id] && !byId[x.dam_id]);
     $('tree').innerHTML = dragons.length
-      ? `<div class="forest">${roots.map(r => fullNode(r.id, new Set())).join('')}</div>`
+      ? forest()
       : '<div class="sm">Пока никого нет.</div>';
     fit(); return;
   }
@@ -179,8 +231,7 @@ function renderTree() {
 }
 
 function pick(id) {
-  sel = id; renderList(); renderTree();
-  if (user) edit(id);
+  sel = id; renderList(); renderTree(); closeDrawers();
 }
 
 function edit(id) {
@@ -223,7 +274,7 @@ async function remove() {
 }
 
 function renderAuth() {
-  $('formBox').classList.toggle('hide', !user);
+  $('newBtn').classList.toggle('hide', !user); updateEditBtn(); if (!user) closeDrawers();
   $('auth').innerHTML = user
     ? `<span class="sm">${esc(user.email)}</span><button id="out">Выйти</button>`
     : `<input id="em" type="email" placeholder="Почта" style="width:11rem;margin:0"><input id="pw" type="password" placeholder="Пароль" style="width:9rem;margin:0"><button class="pri" id="in">Войти</button>`;
@@ -265,7 +316,15 @@ $('zin').onclick = () => { const m = mid(); zoomAt(1.25, m.x, m.y); };
 $('zout').onclick = () => { const m = mid(); zoomAt(1 / 1.25, m.x, m.y); };
 $('fit').onclick = fit;
 $('all').onclick = showAll;
-document.addEventListener('keydown', e => { if (e.key === 'Escape') showAll(); });
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (!$('scrim').classList.contains('hide')) closeDrawers(); else showAll();
+});
+$('openList').onclick = () => openDrawer('listPanel');
+$('newBtn').onclick = () => { edit(null); openDrawer('formBox'); };
+$('editBtn').onclick = () => { edit(sel); openDrawer('formBox'); };
+$('scrim').onclick = closeDrawers;
+document.querySelectorAll('[data-close]').forEach(b => b.onclick = closeDrawers);
 view.addEventListener('pointerdown', e => {
   ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
   moved = false; total = 0; view.classList.add('drag');
