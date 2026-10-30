@@ -15,7 +15,7 @@ body{background:var(--bg);color:var(--ink);font:16px/1.5 "Alegreya Sans",system-
 h1,h2,.nm{font-family:Alegreya,Georgia,serif}
 h1{font-size:clamp(1.6rem,4vw,2.5rem);margin:0}
 h2{font-size:1.25rem;margin:0 0 .6rem}
-.banner{position:relative;height:clamp(110px,22vw,240px);background:#0b1517;overflow:hidden}
+.banner{position:relative;height:clamp(90px,12vw,150px);background:#0b1517;overflow:hidden}
 .banner img{width:100%;height:100%;object-fit:cover;display:block}
 .banner::after{content:"";position:absolute;inset:0;background:linear-gradient(transparent 30%,var(--bg))}
 .banner h1{position:absolute;left:1.4rem;bottom:.5rem;z-index:1;text-shadow:0 2px 10px #000}
@@ -162,8 +162,12 @@ function fillSelects() {
 }
 
 // ---------- Схема родословной: каждый дракон один раз, связи линиями ----------
-const CW = 232, CARD = 208, CH = 64, RH = 130, PAD = 24;
+// Пары стоят рядом, дети — строкой ниже под своей парой. Раскладка не допускает наложений.
+const CW = 232, CARD = 208, CH = 64, RH = 140, PAD = 24;
+const GAP_FAM = 0.35;        // дополнительный зазор между разными семьями (в карточках)
+const MIN_OPEN_ZOOM = 0.5;   // при открытии не мельче этого масштаба (кнопка «Вместить» показывает всё)
 const byName = (a, b) => a.name.localeCompare(b.name, 'ru');
+const avg = a => a.reduce((s, v) => s + v, 0) / a.length;
 
 function box(id, l, t) {
   const d = byId[id];
@@ -172,78 +176,207 @@ function box(id, l, t) {
     <div class="txt"><div class="nm">${esc(d.name)}</div>${d.notes ? `<div class="sm">${esc(d.notes)}</div>` : ''}</div></div>`;
 }
 
-function graph(list) {
-  const S = new Set(list.map(d => d.id)), lvl = {};
-  const P = d => [d.sire_id, d.dam_id].filter(i => S.has(i));
-  list.forEach(d => lvl[d.id] = 0);
-  // поколения: ребёнок ниже родителей, оба родителя на одной строке
-  for (let n = 0, c = 1; c && n < 60; n++) {
-    c = 0;
-    list.forEach(d => {
-      const p = P(d); if (!p.length) return;
-      const l = Math.max(...p.map(i => lvl[i])) + 1;
-      if (l > lvl[d.id] && l <= list.length) { lvl[d.id] = l; c = 1; }
-      if (p.length > 1) {
-        const m = Math.max(lvl[p[0]], lvl[p[1]]);
-        p.forEach(i => { if (lvl[i] < m && m < list.length) { lvl[i] = m; c = 1; } });
-      }
-    });
+// isotonic regression: ближайшие к желаемым y, не убывающие (чтобы карточки не налезали)
+function pava(d, w) {
+  const bl = [];
+  d.forEach((v, i) => {
+    bl.push({ s: v * w[i], w: w[i], n: 1 });
+    while (bl.length > 1) {
+      const b = bl[bl.length - 1], a = bl[bl.length - 2];
+      if (a.s / a.w <= b.s / b.w) break;
+      bl.splice(-2, 2, { s: a.s + b.s, w: a.w + b.w, n: a.n + b.n });
+    }
+  });
+  return bl.flatMap(b => Array(b.n).fill(b.s / b.w));
+}
+
+// Раскладка одной связной группы драконов. Возвращает позиции в «карточках» и «поколениях».
+function layoutComp(list, P, kids, famKey) {
+  const ids = list.map(d => d.id), n = ids.length;
+
+  // 1. Партнёры (оба родителя общего ребёнка) всегда в одном поколении и в одном «блоке»
+  const root = {}; ids.forEach(i => root[i] = i);
+  const find = i => root[i] === i ? i : (root[i] = find(root[i]));
+  const mates = {}; ids.forEach(i => mates[i] = []);
+  list.forEach(d => {
+    const p = P(d); if (p.length < 2) return;
+    root[find(p[0])] = find(p[1]);
+    if (!mates[p[0]].includes(p[1])) { mates[p[0]].push(p[1]); mates[p[1]].push(p[0]); }
+  });
+
+  // 2. Поколения: ребёнок ровно под родителями
+  const lvl = {}; ids.forEach(i => lvl[find(i)] = 0);
+  for (let it = 0, ch = true; ch && it <= n; it++) {
+    ch = false;
+    list.forEach(d => P(d).forEach(p => {
+      const a = find(p), b = find(d.id);
+      if (a !== b && lvl[b] <= lvl[a] && lvl[a] < n) { lvl[b] = lvl[a] + 1; ch = true; }
+    }));
   }
+  // предки без родителей опускаются к своим детям, чтобы не тянуть длинные линии
+  const hasPar = new Set(list.filter(d => P(d).length).map(d => find(d.id))), low = {};
+  list.forEach(d => P(d).forEach(p => { const a = find(p); if (!hasPar.has(a)) low[a] = Math.min(low[a] ?? 1e9, lvl[find(d.id)]); }));
+  Object.entries(low).forEach(([a, v]) => { if (v - 1 > lvl[a]) lvl[a] = v - 1; });
+
+  // 3. Блоки: пара (или несколько партнёров цепочкой) двигается как одно целое
+  const chain = ms => {
+    if (ms.length < 2) return ms;
+    const deg = i => mates[i].length, out = [], seen = new Set();
+    const start = ms.slice().sort((a, b) => deg(a) - deg(b) || byName(byId[a], byId[b]))[0];
+    (function go(i) { seen.add(i); out.push(i); mates[i].slice().sort((a, b) => deg(a) - deg(b)).forEach(j => seen.has(j) || go(j)); })(start);
+    return out;
+  };
+  const grp = {}; ids.forEach(i => (grp[find(i)] ||= []).push(i));
+  const unitOf = {}, units = [];
+  Object.entries(grp).forEach(([r, ms]) => {
+    const u = { lv: lvl[r], m: chain(ms), fam: '', x: 0 };
+    u.m.forEach(m => unitOf[m] = u);
+    const pm = u.m.find(m => P(byId[m]).length);
+    if (pm) u.fam = famKey(byId[pm]);
+    units.push(u);
+  });
+  const L = id => unitOf[id].lv, maxL = Math.max(...units.map(u => u.lv));
+
+  // 4. Порядок в поколениях: обход «сверху вниз», затем сглаживание пересечений
+  const ord = new Map(); let c = 0;
+  const kidUnits = u => {
+    const s = new Set();
+    u.m.forEach(m => kids[m].slice().sort((a, b) => famKey(byId[a]) < famKey(byId[b]) ? -1 : famKey(byId[a]) > famKey(byId[b]) ? 1 : byName(byId[a], byId[b])).forEach(k => s.add(unitOf[k])));
+    return [...s];
+  };
+  const visit = u => { if (ord.has(u)) return; ord.set(u, c++); kidUnits(u).forEach(visit); };
+  units.filter(u => !u.m.some(m => P(byId[m]).length)).sort((a, b) => a.lv - b.lv || byName(byId[a.m[0]], byId[b.m[0]])).forEach(visit);
+  units.forEach(visit);
+  const lv = Array.from({ length: maxL + 1 }, () => []);
+  units.sort((a, b) => ord.get(a) - ord.get(b)).forEach(u => lv[u.lv].push(u));
+
+  const idx = () => { const ix = {}; lv.forEach(arr => { let k = 0; arr.forEach(u => u.m.forEach(m => ix[m] = k++)); }); return ix; };
+  const cross = () => {
+    const ix = idx(), E = [];
+    list.forEach(d => P(d).forEach(p => { if (L(d.id) === L(p) + 1) E.push([L(p), ix[p], ix[d.id]]); }));
+    let t = 0;
+    for (let i = 0; i < E.length; i++) for (let j = i + 1; j < E.length; j++)
+      if (E[i][0] === E[j][0] && (E[i][1] - E[j][1]) * (E[i][2] - E[j][2]) < 0) t++;
+    return t;
+  };
+  let best = lv.map(a => a.slice()), bc = cross();
+  for (let r = 0; r < 8 && bc > 0; r++) {
+    const down = r % 2 === 0;
+    for (let s = 0; s <= maxL; s++) {
+      const l = down ? s : maxL - s, arr = lv[l], ix = idx();
+      const key = arr.map(u => {
+        const v = [];
+        u.m.forEach(m => (down ? P(byId[m]) : kids[m]).forEach(j => { if (L(j) === (down ? l - 1 : l + 1)) v.push(ix[j]); }));
+        return v.length ? avg(v) : null;
+      });
+      const slots = arr.map((_, k) => k).filter(k => key[k] !== null);
+      const sorted = slots.slice().sort((a, b) => key[a] - key[b] || (arr[a].fam < arr[b].fam ? -1 : arr[a].fam > arr[b].fam ? 1 : 0) || a - b);
+      const na = arr.slice(); slots.forEach((k, i) => na[k] = arr[sorted[i]]); lv[l] = na;
+    }
+    const c2 = cross(); if (c2 < bc) { bc = c2; best = lv.map(a => a.slice()); }
+  }
+  best.forEach((a, l) => lv[l] = a);
+
+  // 5. Координаты: родители над детьми, никаких наложений в строке
+  const gap = (a, b) => (a.fam && a.fam === b.fam) ? 0 : GAP_FAM;   // братья и сёстры стоят вплотную
+  lv.forEach(arr => { let x = 0; arr.forEach((u, k) => { if (k) x += gap(arr[k - 1], u); u.x = x; x += u.m.length; }); });
+  const cen = id => unitOf[id].x + unitOf[id].m.indexOf(id) + .5;
+  const relax = l => {
+    const arr = lv[l], d = [], w = [], cum = []; let x = 0;
+    arr.forEach((u, k) => {
+      if (k) x += gap(arr[k - 1], u);
+      cum.push(x); x += u.m.length;
+      const tg = u.m.map(m => {
+        const t = [], pa = P(byId[m]);
+        if (pa.length) t.push(avg(pa.map(cen)));
+        if (kids[m].length) t.push(avg(kids[m].map(cen)));
+        return t.length ? avg(t) : null;
+      });
+      const off = (arr2, rev) => arr2.map((t, i) => t === null ? null : t - .5 - (rev ? arr2.length - 1 - i : i)).filter(v => v !== null);
+      const cost = rev => { const o = off(tg, rev); if (!o.length) return 0; const m = avg(o); return o.reduce((s, v) => s + (v - m) ** 2, 0); };
+      if (u.m.length > 1 && cost(true) < cost(false) - 1e-6) { u.m.reverse(); tg.reverse(); }
+      const o = off(tg, false);
+      d.push(o.length ? avg(o) : u.x); w.push(o.length || .05);
+    });
+    const y = pava(d.map((v, k) => v - cum[k]), w);
+    arr.forEach((u, k) => u.x = y[k] + cum[k]);
+  };
+  for (let r = 0; r < 14; r++) { const o = lv.map((_, i) => i); if (r % 2) o.reverse(); o.forEach(relax); }
+
+  const x0 = Math.min(...units.map(u => u.x)), pos = {};
+  units.forEach(u => u.m.forEach((m, i) => pos[m] = { x: u.x - x0 + i, y: u.lv }));
+  return { pos, w: Math.max(...units.map(u => u.x - x0 + u.m.length)), h: maxL + 1 };
+}
+
+function graph(list) {
+  const S = new Set(list.map(d => d.id));
+  const P = d => [d.sire_id, d.dam_id].filter(i => S.has(i));
+  const famKey = d => (S.has(d.sire_id) ? d.sire_id : '') + '|' + (S.has(d.dam_id) ? d.dam_id : '');
+  const kids = {}; list.forEach(d => kids[d.id] = []);
+  list.forEach(d => P(d).forEach(p => kids[p].push(d.id)));
+
+  // связные группы: один род — одна группа
+  const seen = new Set(), comps = [];
+  list.forEach(d => {
+    if (seen.has(d.id)) return;
+    const comp = [], st = [d.id]; seen.add(d.id);
+    while (st.length) {
+      const i = st.pop(); comp.push(byId[i]);
+      [...P(byId[i]), ...kids[i]].forEach(j => { if (!seen.has(j)) { seen.add(j); st.push(j); } });
+    }
+    comps.push(comp);
+  });
+  const lone = comps.filter(c => c.length === 1).map(c => c[0]).sort(byName);
+  const lay = comps.filter(c => c.length > 1).sort((a, b) => b.length - a.length).map(c => ({ c, ...layoutComp(c, P, kids, famKey) }));
+
+  // группы укладываются рядами, примерно в форму экрана
+  lay.forEach(l => { l.pw = l.w * CW; l.ph = (l.h - 1) * RH + CH; });
+  const aspect = Math.max(1.2, view.clientWidth / Math.max(view.clientHeight, 1) || 2);   // форма области просмотра
+  const target = lay.length ? Math.max(...lay.map(l => l.pw), Math.sqrt(lay.reduce((s, l) => s + (l.pw + 70) * (l.ph + 50), 0) * aspect)) : 0;
+  let x = 0, y = 0, rowH = 0, W = 0;
+  lay.forEach(l => {
+    if (x && x + l.pw > target) { x = 0; y += rowH + 50; rowH = 0; }
+    l.ox = x; l.oy = y; x += l.pw + 70; rowH = Math.max(rowH, l.ph); W = Math.max(W, l.ox + l.pw);
+  });
+  let H = lay.length ? y + rowH : 0;
+  const at = {};
+  lay.forEach(l => l.c.forEach(d => at[d.id] = { x: l.ox + l.pos[d.id].x * CW, y: l.oy + l.pos[d.id].y * RH }));
+  if (lone.length) {   // драконы без родственных связей — компактной сеткой под схемой
+    const cols = Math.max(3, Math.round(W / CW), Math.ceil(Math.sqrt(lone.length * aspect))), y0 = H ? H + 40 : 0;
+    lone.forEach((d, i) => at[d.id] = { x: (i % cols) * CW, y: y0 + Math.floor(i / cols) * (CH + 16) });
+    W = Math.max(W, Math.min(cols, lone.length) * CW);
+    H = y0 + Math.ceil(lone.length / cols) * (CH + 16) - 16;
+  }
+
+  const px = id => at[id].x + PAD, py = id => at[id].y + PAD, cx = id => px(id) + CARD / 2;
+
   // семьи: пара (или один родитель) → дети
   const fam = new Map();
   list.forEach(d => {
     if (!P(d).length) return;
-    const k = (S.has(d.sire_id) ? d.sire_id : '') + '|' + (S.has(d.dam_id) ? d.dam_id : '');
-    if (!fam.has(k)) fam.set(k, []);
-    fam.get(k).push(d.id);
+    const k = famKey(d);
+    if (!fam.has(k)) fam.set(k, { ps: k.split('|').filter(Boolean), kids: [] });
+    fam.get(k).kids.push(d.id);
   });
-  const inFam = new Set(); fam.forEach((_, k) => k.split('|').forEach(i => i && inFam.add(i)));
-  const lone = list.filter(d => !P(d).length && !inFam.has(d.id)), loneIds = new Set(lone.map(d => d.id));
-  const pos = {}, done = new Set(), hasPar = id => P(byId[id]).length > 0;
-  function place(id) {
-    pos[id] = { x: 0 }; const ids = [id]; let cur = 0;
-    [...fam].filter(([k]) => k.split('|').includes(id) && !done.has(k)).forEach(([k, kids], i) => {
-      done.add(k);
-      const mate = k.split('|').filter(Boolean).find(p => p !== id);
-      let kw = 0; const kidIds = [];
-      kids.slice().sort((a, b) => byName(byId[a], byId[b])).forEach(kid => {
-        if (pos[kid]) return;
-        const r = place(kid); r.ids.forEach(j => pos[j].x += kw); kw += r.w; kidIds.push(...r.ids);
-      });
-      const card = mate && !pos[mate] && !hasPar(mate);   // партнёр без своих предков ставится рядом
-      const w = Math.max(kw, card ? 2 : 1), cc = cur + w / 2;
-      kidIds.forEach(j => pos[j].x += cur + (w - kw) / 2);
-      if (i === 0) pos[id].x = card ? cc - 1 : cc - .5;
-      if (card) { pos[mate] = { x: i === 0 ? cc : cc - .5 }; ids.push(mate); }
-      ids.push(...kidIds); cur += w;
-    });
-    return { w: cur || 1, ids };
-  }
-  let X = 0; const rank = { M: 0, F: 1, U: 2 };
-  const add = id => { if (pos[id]) return; const r = place(id); r.ids.forEach(j => pos[j].x += X); X += r.w + .4; };
-  list.filter(d => !hasPar(d.id) && !loneIds.has(d.id)).sort((a, b) => rank[a.sex] - rank[b.sex] || byName(a, b)).forEach(d => add(d.id));
-  list.filter(d => !loneIds.has(d.id)).forEach(d => add(d.id));
-  if (lone.length) {   // драконы без родственных связей — сеткой под основной схемой
-    const base = Object.keys(pos).length ? Math.max(...Object.keys(pos).map(i => lvl[i])) + 1 : 0;
-    const cols = Math.max(3, Math.ceil(X) || Math.ceil(Math.sqrt(lone.length) * 1.6));
-    lone.sort(byName).forEach((d, i) => { pos[d.id] = { x: i % cols }; lvl[d.id] = base + Math.floor(i / cols); });
-    X = Math.max(X, Math.min(cols, lone.length));
-  }
+  const rows = {};   // соседние семьи в одной строке рисуют шину на разной высоте, чтобы линии не сливались
+  fam.forEach(o => { o.jx = avg(o.ps.map(cx)); (rows[py(o.ps[0])] ||= []).push(o); });
+  Object.values(rows).forEach(a => a.sort((p, q) => p.jx - q.jx).forEach((o, i) => o.lane = i % 3));
 
-  const px = id => pos[id].x * CW + PAD, py = id => lvl[id] * RH + PAD, cx = id => px(id) + CARD / 2;
   let path = '', dots = '';
-  fam.forEach((kids, k) => {
-    const ps = k.split('|').filter(Boolean), bus = Math.max(...ps.map(py)) + CH + (RH - CH) / 2;
-    let jx, jy;
+  fam.forEach(o => {
+    const ps = o.ps, top = py(ps[0]), bottom = top + CH, bus = bottom + 28 + o.lane * 9;
+    let jx = o.jx, jy = bottom;
     if (ps.length > 1) {
-      jx = (cx(ps[0]) + cx(ps[1])) / 2; jy = py(ps[0]) + CH / 2;
-      path += `M${cx(ps[0])} ${jy}H${cx(ps[1])}`; dots += `<circle cx="${jx}" cy="${jy}" r="4"/>`;
-    } else { jx = cx(ps[0]); jy = py(ps[0]) + CH; }
-    const xs = kids.map(cx).concat(jx);
-    path += `M${jx} ${jy}V${bus}M${Math.min(...xs)} ${bus}H${Math.max(...xs)}` + kids.map(i => `M${cx(i)} ${bus}V${py(i)}`).join('');
+      const xa = cx(ps[0]), xb = cx(ps[1]);
+      if (Math.abs(xa - xb) <= CW + 1) { jy = top + CH / 2; path += `M${xa} ${jy}H${xb}`; }   // пара рядом: линия между карточками
+      else { jy = bottom + 12; path += `M${xa} ${bottom}V${jy}H${xb}V${bottom}`; }            // пара не рядом: линия под карточками
+      dots += `<circle cx="${jx}" cy="${jy}" r="4"/>`;
+    }
+    const xs = o.kids.map(cx).concat(jx);
+    path += `M${jx} ${jy}V${bus}M${Math.min(...xs)} ${bus}H${Math.max(...xs)}` + o.kids.map(i => `M${cx(i)} ${bus}V${py(i)}`).join('');
   });
-  const W = X * CW + PAD * 2, H = (Math.max(...Object.values(lvl)) + 1) * RH + PAD * 2 - (RH - CH);
-  return { W, H, html: `<svg class="lines" width="${W}" height="${H}"><path d="${path}"/>${dots}</svg>` + list.map(d => box(d.id, px(d.id), py(d.id))).join('') };
+  const TW = W + PAD * 2, TH = H + PAD * 2;
+  return { W: TW, H: TH, html: `<svg class="lines" width="${TW}" height="${TH}"><path d="${path}"/>${dots}</svg>` + list.map(d => box(d.id, px(d.id), py(d.id))).join('') };
 }
 
 // выбранный дракон: предки, потомки и их партнёры
@@ -431,12 +564,16 @@ function zoomAt(f, cx, cy) {
   const nz = Math.min(3, Math.max(0.03, z * f));
   px0 = cx - (cx - px0) * nz / z; py0 = cy - (cy - py0) * nz / z; z = nz; apply();
 }
-function fit() {
+function fit(all = false) {
   const t = $('tree'); t.style.transform = 'none';
   const w = t.offsetWidth, h = t.offsetHeight;
   if (!w || !h) return;
-  z = Math.max(0.03, Math.min(1, view.clientWidth / w, view.clientHeight / h));
-  px0 = (view.clientWidth - w * z) / 2; py0 = Math.max(10, (view.clientHeight - h * z) / 2); apply();
+  const vw = view.clientWidth, vh = view.clientHeight;
+  z = Math.max(0.03, Math.min(1, vw / w, vh / h));
+  if (!all && vw >= 700 && z < MIN_OPEN_ZOOM) z = MIN_OPEN_ZOOM;   // на широком экране слишком мелко не читается — начинаем с читаемого масштаба
+  px0 = w * z <= vw ? (vw - w * z) / 2 : 12;
+  py0 = h * z <= vh ? Math.max(10, (vh - h * z) / 2) : 12;
+  apply();
 }
 view.addEventListener('wheel', e => {
   e.preventDefault();
@@ -447,7 +584,7 @@ $('ctl').addEventListener('pointerdown', e => e.stopPropagation());
 const mid = () => ({ x: view.clientWidth / 2, y: view.clientHeight / 2 });
 $('zin').onclick = () => { const m = mid(); zoomAt(1.25, m.x, m.y); };
 $('zout').onclick = () => { const m = mid(); zoomAt(1 / 1.25, m.x, m.y); };
-$('fit').onclick = fit;
+$('fit').onclick = () => fit(true);
 $('all').onclick = showAll;
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
@@ -481,7 +618,7 @@ const endPtr = e => { ptrs.delete(e.pointerId); if (!ptrs.size) view.classList.r
 window.addEventListener('pointerup', endPtr); window.addEventListener('pointercancel', endPtr);
 // после перетаскивания клик по карточке не должен выбирать дракона
 view.addEventListener('click', e => { if (moved) { e.stopPropagation(); moved = false; } }, true);
-window.addEventListener('resize', fit);
+window.addEventListener('resize', () => fit());
 
 sb.auth.onAuthStateChange((_e, s) => { user = s?.user ?? null; renderAuth(); });
 sb.auth.getSession().then(({ data }) => { user = data.session?.user ?? null; renderAuth(); });
