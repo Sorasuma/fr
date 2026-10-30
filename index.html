@@ -165,7 +165,8 @@ function fillSelects() {
 // Пары стоят рядом, дети — строкой ниже под своей парой. Раскладка не допускает наложений.
 const CW = 232, CARD = 208, CH = 64, RH = 140, PAD = 24;
 const GAP_FAM = 0.35;        // дополнительный зазор между разными семьями (в карточках)
-const MIN_OPEN_ZOOM = 0.5;   // при открытии не мельче этого масштаба (кнопка «Вместить» показывает всё)
+const MIN_OPEN_ZOOM = 0.45;   // при открытии не мельче этого масштаба (кнопка «Вместить» показывает всё)
+const MIN_OPEN_ZOOM_MOBILE = 0.55;
 const byName = (a, b) => a.name.localeCompare(b.name, 'ru');
 const avg = a => a.reduce((s, v) => s + v, 0) / a.length;
 
@@ -329,24 +330,36 @@ function graph(list) {
   const lone = comps.filter(c => c.length === 1).map(c => c[0]).sort(byName);
   const lay = comps.filter(c => c.length > 1).sort((a, b) => b.length - a.length).map(c => ({ c, ...layoutComp(c, P, kids, famKey) }));
 
-  // группы укладываются рядами, примерно в форму экрана
+  // Группы и одиночки укладываются плотными рядами, примерно в форму экрана.
+  // Сначала самые высокие, чтобы в каждом ряду стояли группы похожей высоты — без пустых «провалов».
+  const GX = 56, GY = 44;
   lay.forEach(l => { l.pw = l.w * CW; l.ph = (l.h - 1) * RH + CH; });
   const aspect = Math.max(1.2, view.clientWidth / Math.max(view.clientHeight, 1) || 2);   // форма области просмотра
-  const target = lay.length ? Math.max(...lay.map(l => l.pw), Math.sqrt(lay.reduce((s, l) => s + (l.pw + 70) * (l.ph + 50), 0) * aspect)) : 0;
-  let x = 0, y = 0, rowH = 0, W = 0;
-  lay.forEach(l => {
-    if (x && x + l.pw > target) { x = 0; y += rowH + 50; rowH = 0; }
-    l.ox = x; l.oy = y; x += l.pw + 70; rowH = Math.max(rowH, l.ph); W = Math.max(W, l.ox + l.pw);
-  });
-  let H = lay.length ? y + rowH : 0;
+  const items = lay.slice().sort((a, b) => b.ph - a.ph || b.pw - a.pw);
+  if (lone.length) {   // драконы без родственных связей — один компактный блок, который встаёт в общую упаковку
+    const cols = Math.max(2, Math.ceil(Math.sqrt(lone.length * (CH + 16) / CW * 1.6)));
+    items.push({ lone: true, cols, pw: Math.min(cols, lone.length) * CW, ph: Math.ceil(lone.length / cols) * (CH + 16) - 16 });
+  }
+  const shelf = (arr, y0) => {   // arr укладывается рядами; возвращает нижнюю границу
+    if (!arr.length) return y0;
+    const area = arr.reduce((t, l) => t + (l.pw + GX) * (l.ph + GY), 0);
+    const target = Math.max(...arr.map(l => l.pw), Math.sqrt(area * aspect));
+    let x = 0, y = y0, rowH = 0;
+    arr.forEach(l => {
+      if (x && x + l.pw > target) { x = 0; y += rowH + GY; rowH = 0; }
+      l.ox = x; l.oy = y; x += l.pw + GX; rowH = Math.max(rowH, l.ph);
+    });
+    return y + rowH;
+  };
+  // очень широкие группы (шире «экранной» формы) занимают свой ряд, остальное собирается компактно под ними
+  const total = items.reduce((t, l) => t + (l.pw + GX) * (l.ph + GY), 0), wideLim = Math.sqrt(total * aspect);
+  const wide = items.filter(l => l.pw > wideLim), rest = items.filter(l => l.pw <= wideLim);
+  let H = shelf(wide, 0);
+  H = shelf(rest, H ? H + GY : 0);
+  const W = items.length ? Math.max(...items.map(l => l.ox + l.pw)) : 0;
   const at = {};
   lay.forEach(l => l.c.forEach(d => at[d.id] = { x: l.ox + l.pos[d.id].x * CW, y: l.oy + l.pos[d.id].y * RH }));
-  if (lone.length) {   // драконы без родственных связей — компактной сеткой под схемой
-    const cols = Math.max(3, Math.round(W / CW), Math.ceil(Math.sqrt(lone.length * aspect))), y0 = H ? H + 40 : 0;
-    lone.forEach((d, i) => at[d.id] = { x: (i % cols) * CW, y: y0 + Math.floor(i / cols) * (CH + 16) });
-    W = Math.max(W, Math.min(cols, lone.length) * CW);
-    H = y0 + Math.ceil(lone.length / cols) * (CH + 16) - 16;
-  }
+  items.filter(l => l.lone).forEach(l => lone.forEach((d, i) => at[d.id] = { x: l.ox + (i % l.cols) * CW, y: l.oy + Math.floor(i / l.cols) * (CH + 16) }));
 
   const px = id => at[id].x + PAD, py = id => at[id].y + PAD, cx = id => px(id) + CARD / 2;
 
@@ -376,7 +389,7 @@ function graph(list) {
     path += `M${jx} ${jy}V${bus}M${Math.min(...xs)} ${bus}H${Math.max(...xs)}` + o.kids.map(i => `M${cx(i)} ${bus}V${py(i)}`).join('');
   });
   const TW = W + PAD * 2, TH = H + PAD * 2;
-  return { W: TW, H: TH, html: `<svg class="lines" width="${TW}" height="${TH}"><path d="${path}"/>${dots}</svg>` + list.map(d => box(d.id, px(d.id), py(d.id))).join('') };
+  return { W: TW, H: TH, main: new Set(lay.length ? lay[0].c.map(d => d.id) : []), html: `<svg class="lines" width="${TW}" height="${TH}"><path d="${path}"/>${dots}</svg>` + list.map(d => box(d.id, px(d.id), py(d.id))).join('') };
 }
 
 // выбранный дракон: предки, потомки и их партнёры
@@ -397,7 +410,7 @@ function renderTree() {
   $('treeTitle').textContent = d ? 'Родословная: ' + d.name : 'Вся родословная';
   if (!list.length) { t.style.width = t.style.height = ''; t.innerHTML = '<div class="sm" style="padding:1.2rem">Пока никого нет.</div>'; fit(); return; }
   const g = graph(list);
-  t.style.width = g.W + 'px'; t.style.height = g.H + 'px'; t.innerHTML = g.html; fit();
+  t.style.width = g.W + 'px'; t.style.height = g.H + 'px'; t.innerHTML = g.html; mainIds = g.main; fit();
 }
 
 function pick(id) { sel = id; renderList(); renderTree(); closeDrawers(); }
@@ -557,7 +570,7 @@ $('q').oninput = renderList;
 $('save').onclick = save; $('del').onclick = remove; $('reset').onclick = () => edit(null);
 
 // Перемещение и масштаб: мышь (перетаскивание, колесо), тач (один палец, щипок), кнопки
-let z = 1, px0 = 0, py0 = 0, moved = false, total = 0, startD = 0, startZ = 1;
+let mainIds = new Set(), z = 1, px0 = 0, py0 = 0, moved = false, total = 0, startD = 0, startZ = 1;
 const view = $('view'), ptrs = new Map();
 const apply = () => { $('tree').style.transform = `translate(${px0}px,${py0}px) scale(${z})`; };
 function zoomAt(f, cx, cy) {
@@ -570,9 +583,27 @@ function fit(all = false) {
   if (!w || !h) return;
   const vw = view.clientWidth, vh = view.clientHeight;
   z = Math.max(0.03, Math.min(1, vw / w, vh / h));
-  if (!all && vw >= 700 && z < MIN_OPEN_ZOOM) z = MIN_OPEN_ZOOM;   // на широком экране слишком мелко не читается — начинаем с читаемого масштаба
-  px0 = w * z <= vw ? (vw - w * z) / 2 : 12;
-  py0 = h * z <= vh ? Math.max(10, (vh - h * z) / 2) : 12;
+  if (!all) z = Math.max(z, vw >= 700 ? MIN_OPEN_ZOOM : MIN_OPEN_ZOOM_MOBILE);   // слишком мелко не читается — начинаем с читаемого масштаба
+  if (w * z <= vw && h * z <= vh) {   // всё помещается — просто по центру
+    px0 = (vw - w * z) / 2; py0 = Math.max(10, (vh - h * z) / 2);
+  } else {                            // не помещается — показываем самое «населённое» место, а не пустой угол
+    const m = 12, Wv = (vw - 2 * m) / z, Hv = (vh - 2 * m) / z;
+    const bx = [...t.querySelectorAll('.box')].map(e => ({ x: e.offsetLeft, y: e.offsetTop, s: e.classList.contains('sel'), m: mainIds.has(e.dataset.id) }));
+    let fx = 0, fy = 0;
+    const clampX = v => Math.max(0, Math.min(v, Math.max(0, w - Wv))), clampY = v => Math.max(0, Math.min(v, Math.max(0, h - Hv)));
+    const selB = bx.find(b => b.s);
+    if (selB) { fx = clampX(selB.x + CARD / 2 - Wv / 2); fy = clampY(selB.y + CH / 2 - Hv / 2); }   // выбранный дракон — в центре
+    else {
+      let best = -1;
+      const cand = bx.some(b => b.m) ? bx.filter(b => b.m) : bx;   // ищем место в самой большой семье
+      cand.forEach(c => {
+        const x = clampX(c.x - 16), y = clampY(c.y - 16);
+        const n = cand.filter(b => b.x + CARD > x && b.x < x + Wv && b.y + CH > y && b.y < y + Hv).length;
+        if (n > best || (n === best && (y < fy || (y === fy && x < fx)))) { best = n; fx = x; fy = y; }
+      });
+    }
+    px0 = m - fx * z; py0 = m - fy * z;
+  }
   apply();
 }
 view.addEventListener('wheel', e => {
