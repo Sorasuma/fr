@@ -38,7 +38,10 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .item:hover,.item.on{background:var(--bg)}
 .dot{width:.7rem;height:.7rem;border-radius:50%;flex:none;background:var(--c)}
 .M{--c:var(--m)}.F{--c:var(--f)}.U{--c:var(--mute)}
-.view{position:relative;height:calc(100vh - 19rem);min-height:420px;overflow:hidden;border:1px solid var(--line);border-radius:8px;background:var(--bg);touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none}
+#groups{display:flex;align-items:center;gap:.4rem;flex-wrap:nowrap;overflow-x:auto;margin:0 0 .6rem;padding-bottom:.2rem}
+#groups>*{flex:none}
+#groups button{padding:.1rem .6rem;font-size:.9rem;max-width:15rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.view{position:relative;height:calc(100vh - 20rem);min-height:420px;overflow:hidden;border:1px solid var(--line);border-radius:8px;background:var(--bg);touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none}
 .view.drag{cursor:grabbing}
 .canvas{position:absolute;left:0;top:0;transform-origin:0 0}
 .lines{position:absolute;left:0;top:0;pointer-events:none}
@@ -64,6 +67,11 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .nm{font-weight:700;line-height:1.15;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .sm{font-size:.8rem;color:var(--mute)}
 .box .sm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.st{font-size:.78rem;font-weight:500;white-space:nowrap}
+.st.in{color:#7fc28a}.st.out{color:var(--gold)}.st.dead{color:var(--mute)}
+.box.dead{border-color:transparent;border-left-color:var(--c)}.box.dead .pic,.box.dead .txt{opacity:.5}.box.dead .pic,.item.dead .th{filter:grayscale(1)}.item.dead .nm{opacity:.6}
+.box.out{border-style:dashed;border-left-style:solid}
+.item .st{margin-left:auto}
 .msg{color:var(--f);min-height:1.2rem;font-size:.9rem}
 .story{display:grid;grid-template-columns:15rem 1fr;gap:1.4rem;align-items:start}
 #toc{display:flex;flex-direction:column;gap:.2rem}
@@ -92,6 +100,7 @@ a.men{color:var(--c);text-decoration:none;border-bottom:1px dotted var(--c);curs
 <main>
   <section id="treeView">
     <div class="bar"><h2 id="treeTitle">Вся родословная</h2><button id="editBtn" class="hide">Изменить дракона</button></div>
+    <div id="groups" class="hide" aria-label="Перейти к семье"></div>
     <div class="view" id="view">
       <div class="ctl" id="ctl"><button id="all" title="Показать всех драконов">Вся родословная</button><button id="zin" title="Приблизить" aria-label="Приблизить">+</button><button id="zout" title="Отдалить" aria-label="Отдалить">−</button><button id="fit" title="Показать всё">Вместить</button></div>
       <div id="tree" class="canvas"></div>
@@ -106,6 +115,7 @@ a.men{color:var(--c);text-decoration:none;border-bottom:1px dotted var(--c);curs
 <aside id="listPanel" class="drawer left hide" aria-label="Список драконов">
   <div class="dh"><h2>Все драконы</h2><button data-close aria-label="Закрыть">✕</button></div>
   <input id="q" placeholder="Поиск по имени">
+  <select id="stf"><option value="">Все драконы</option><option value="lair">Живые в логове</option><option value="out">Покинули логово</option><option value="dead">Мёртвые</option></select>
   <div id="list" class="list"></div>
 </aside>
 <aside id="formBox" class="drawer right hide" aria-label="Форма дракона">
@@ -113,6 +123,10 @@ a.men{color:var(--c);text-decoration:none;border-bottom:1px dotted var(--c);curs
   <label>Имя</label><input id="name">
   <label>Пол</label>
   <select id="sex"><option value="M">Самец</option><option value="F">Самка</option><option value="U">Не указан</option></select>
+  <label>Жив или мёртв</label>
+  <select id="alive"><option value="1">Жив</option><option value="0">Мёртв</option></select>
+  <label>Логово</label>
+  <select id="lair"><option value="1">В моём логове</option><option value="0">Покинул логово</option></select>
   <label>Отец</label><select id="sire"></select>
   <label>Мать</label><select id="dam"></select>
   <label>Ссылка на изображение</label><input id="img" placeholder="https://...">
@@ -147,9 +161,9 @@ function closeDrawers() { ['listPanel', 'formBox'].forEach(i => $(i).classList.a
 function renderList() {
   updateEditBtn();
   const q = $('q').value.trim().toLowerCase();
-  const rows = dragons.filter(d => d.name.toLowerCase().includes(q));
+  const f = $('stf').value, rows = dragons.filter(d => d.name.toLowerCase().includes(q) && (!f || (f === 'dead' ? isDead(d) : f === 'out' ? isOut(d) : !isDead(d) && !isOut(d))));
   $('list').innerHTML = rows.length ? rows.map(d =>
-    `<div class="item ${d.sex} ${d.id === sel ? 'on' : ''}" data-id="${d.id}"><span class="dot"></span>${d.image_url ? `<img class="th" src="${esc(d.image_url)}" alt="" referrerpolicy="no-referrer" loading="lazy" onerror="this.remove()">` : ''}<span class="nm">${esc(d.name)}</span></div>`
+    `<div class="item ${d.sex} ${isDead(d) ? 'dead' : ''} ${d.id === sel ? 'on' : ''}" data-id="${d.id}"><span class="dot"></span>${d.image_url ? `<img class="th" src="${esc(d.image_url)}" alt="" referrerpolicy="no-referrer" loading="lazy" onerror="this.remove()">` : ''}<span class="nm">${esc(d.name)}</span><span class="st ${stOf(d)[0]}">${stOf(d)[1]}</span></div>`
   ).join('') : '<div class="sm">Пока никого нет. Войдите и добавьте первого дракона.</div>';
 }
 
@@ -167,14 +181,16 @@ const CW = 232, CARD = 208, CH = 64, RH = 140, PAD = 24;
 const GAP_FAM = 0.35;        // дополнительный зазор между разными семьями (в карточках)
 const MIN_OPEN_ZOOM = 0.45;   // при открытии не мельче этого масштаба (кнопка «Вместить» показывает всё)
 const MIN_OPEN_ZOOM_MOBILE = 0.55;
+const isDead = d => d.alive === false, isOut = d => d.alive !== false && d.in_lair === false;
+const stOf = d => isDead(d) ? ['dead', 'Мёртв'] : isOut(d) ? ['out', 'Покинул логово'] : ['in', 'В логове'];
 const byName = (a, b) => a.name.localeCompare(b.name, 'ru');
 const avg = a => a.reduce((s, v) => s + v, 0) / a.length;
 
 function box(id, l, t) {
-  const d = byId[id];
+  const d = byId[id], st = stOf(d);
   const pic = d.image_url ? `<img class="pic" src="${esc(d.image_url)}" alt="" referrerpolicy="no-referrer" draggable="false" onerror="this.remove()">` : '';
-  return `<div class="box ${d.sex} ${id === sel ? 'sel' : ''}" data-id="${id}" title="${esc(d.name)}" style="left:${l}px;top:${t}px">${pic}
-    <div class="txt"><div class="nm">${esc(d.name)}</div>${d.notes ? `<div class="sm">${esc(d.notes)}</div>` : ''}</div></div>`;
+  return `<div class="box ${d.sex} ${isDead(d) ? 'dead' : ''} ${isOut(d) ? 'out' : ''} ${id === sel ? 'sel' : ''}" data-id="${id}" title="${esc(d.name)} — ${st[1]}" style="left:${l}px;top:${t}px">${pic}
+    <div class="txt"><div class="nm">${esc(d.name)}</div><div class="sm"><span class="st ${st[0]}">${st[1]}</span>${d.notes ? ' · ' + esc(d.notes) : ''}</div></div></div>`;
 }
 
 // isotonic regression: ближайшие к желаемым y, не убывающие (чтобы карточки не налезали)
@@ -330,33 +346,37 @@ function graph(list) {
   const lone = comps.filter(c => c.length === 1).map(c => c[0]).sort(byName);
   const lay = comps.filter(c => c.length > 1).sort((a, b) => b.length - a.length).map(c => ({ c, ...layoutComp(c, P, kids, famKey) }));
 
-  // Группы и одиночки укладываются плотными рядами, примерно в форму экрана.
-  // Сначала самые высокие, чтобы в каждом ряду стояли группы похожей высоты — без пустых «провалов».
+  // Основной род стоит слева вверху, а все малые семьи и одиночки — компактным блоком РЯДОМ с ним
+  // (справа; если основной род очень широкий — сразу под ним). Ничего не уезжает далеко.
   const GX = 56, GY = 44;
   lay.forEach(l => { l.pw = l.w * CW; l.ph = (l.h - 1) * RH + CH; });
   const aspect = Math.max(1.2, view.clientWidth / Math.max(view.clientHeight, 1) || 2);   // форма области просмотра
-  const items = lay.slice().sort((a, b) => b.ph - a.ph || b.pw - a.pw);
-  if (lone.length) {   // драконы без родственных связей — один компактный блок, который встаёт в общую упаковку
-    const cols = Math.max(2, Math.ceil(Math.sqrt(lone.length * (CH + 16) / CW * 1.6)));
+  const main = lay[0], others = lay.slice(1).sort((a, b) => b.ph - a.ph || b.pw - a.pw);
+  const items = others.slice();
+  if (lone.length) {   // драконы без родственных связей — один компактный блок
+    const cols = Math.max(2, Math.min(6, Math.ceil(Math.sqrt(lone.length * (CH + 16) / CW * 1.6))));
     items.push({ lone: true, cols, pw: Math.min(cols, lone.length) * CW, ph: Math.ceil(lone.length / cols) * (CH + 16) - 16 });
   }
-  const shelf = (arr, y0) => {   // arr укладывается рядами; возвращает нижнюю границу
-    if (!arr.length) return y0;
-    const area = arr.reduce((t, l) => t + (l.pw + GX) * (l.ph + GY), 0);
-    const target = Math.max(...arr.map(l => l.pw), Math.sqrt(area * aspect));
-    let x = 0, y = y0, rowH = 0;
-    arr.forEach(l => {
+  const side = !!main && main.pw <= 3200;
+  const packAsp = side ? Math.max(0.8, Math.min(aspect, main.ph / Math.max(1, main.pw) * 2)) : aspect;
+  let bw = 0, bh = 0;
+  if (items.length) {   // ряды: сначала самые высокие, чтобы в ряду были группы похожей высоты
+    const area = items.reduce((t, l) => t + (l.pw + GX) * (l.ph + GY), 0);
+    const target = Math.max(...items.map(l => l.pw), Math.sqrt(area * packAsp));
+    let x = 0, y = 0, rowH = 0;
+    items.forEach(l => {
       if (x && x + l.pw > target) { x = 0; y += rowH + GY; rowH = 0; }
-      l.ox = x; l.oy = y; x += l.pw + GX; rowH = Math.max(rowH, l.ph);
+      l.ox = x; l.oy = y; x += l.pw + GX; rowH = Math.max(rowH, l.ph); bw = Math.max(bw, l.ox + l.pw);
     });
-    return y + rowH;
-  };
-  // очень широкие группы (шире «экранной» формы) занимают свой ряд, остальное собирается компактно под ними
-  const total = items.reduce((t, l) => t + (l.pw + GX) * (l.ph + GY), 0), wideLim = Math.sqrt(total * aspect);
-  const wide = items.filter(l => l.pw > wideLim), rest = items.filter(l => l.pw <= wideLim);
-  let H = shelf(wide, 0);
-  H = shelf(rest, H ? H + GY : 0);
-  const W = items.length ? Math.max(...items.map(l => l.ox + l.pw)) : 0;
+    bh = y + rowH;
+  }
+  let W = 0, H = 0;
+  if (main) { main.ox = 0; main.oy = 0; W = main.pw; H = main.ph; }
+  if (items.length) {
+    const dx = !main ? 0 : side ? main.pw + GX * 1.5 : 0, dy = !main || side ? 0 : main.ph + GY * 1.5;
+    items.forEach(l => { l.ox += dx; l.oy += dy; });
+    W = Math.max(W, dx + bw); H = Math.max(H, dy + bh);
+  }
   const at = {};
   lay.forEach(l => l.c.forEach(d => at[d.id] = { x: l.ox + l.pos[d.id].x * CW, y: l.oy + l.pos[d.id].y * RH }));
   items.filter(l => l.lone).forEach(l => lone.forEach((d, i) => at[d.id] = { x: l.ox + (i % l.cols) * CW, y: l.oy + Math.floor(i / l.cols) * (CH + 16) }));
@@ -389,7 +409,17 @@ function graph(list) {
     path += `M${jx} ${jy}V${bus}M${Math.min(...xs)} ${bus}H${Math.max(...xs)}` + o.kids.map(i => `M${cx(i)} ${bus}V${py(i)}`).join('');
   });
   const TW = W + PAD * 2, TH = H + PAD * 2;
-  return { W: TW, H: TH, main: new Set(lay.length ? lay[0].c.map(d => d.id) : []), html: `<svg class="lines" width="${TW}" height="${TH}"><path d="${path}"/>${dots}</svg>` + list.map(d => box(d.id, px(d.id), py(d.id))).join('') };
+  const bb = ids => {
+    let x0 = 1e9, y0 = 1e9, x1 = 0, y1 = 0;
+    ids.forEach(i => { x0 = Math.min(x0, px(i)); y0 = Math.min(y0, py(i)); x1 = Math.max(x1, px(i) + CARD); y1 = Math.max(y1, py(i) + CH); });
+    return { x: x0 - 16, y: y0 - 16, w: x1 - x0 + 32, h: y1 - y0 + 32 };
+  };
+  const groups = lay.map((l, i) => {
+    const roots = l.c.filter(d => !P(d).length).sort(byName).slice(0, 2).map(d => d.name);
+    return { label: (i === 0 ? 'Основной род' : roots.join(' и ')) + ' · ' + l.c.length, ...bb(l.c.map(d => d.id)) };
+  });
+  if (lone.length) groups.push({ label: 'Без родственных связей · ' + lone.length, ...bb(lone.map(d => d.id)) });
+  return { W: TW, H: TH, groups, main: new Set(lay.length ? lay[0].c.map(d => d.id) : []), html: `<svg class="lines" width="${TW}" height="${TH}"><path d="${path}"/>${dots}</svg>` + list.map(d => box(d.id, px(d.id), py(d.id))).join('') };
 }
 
 // выбранный дракон: предки, потомки и их партнёры
@@ -403,14 +433,29 @@ function relatives(id) {
   return dragons.filter(d => S.has(d.id));
 }
 
+let curGroups = [];
+function renderGroups() {
+  const g = $('groups'), on = !sel && curGroups.length > 1;
+  g.classList.toggle('hide', !on);
+  g.innerHTML = on ? '<span class="sm">Семьи:</span>' + curGroups.map((o, i) => `<button type="button" data-g="${i}" title="${esc(o.label)}">${esc(o.label)}</button>`).join('') : '';
+}
+function focusRect(r) {
+  const vw = view.clientWidth, vh = view.clientHeight, m = 12;
+  z = Math.max(Math.min(1, (vw - 2 * m) / r.w, (vh - 2 * m) / r.h), vw >= 700 ? MIN_OPEN_ZOOM : MIN_OPEN_ZOOM_MOBILE);
+  px0 = r.w * z <= vw - 2 * m ? (vw - r.w * z) / 2 - r.x * z : m - r.x * z;
+  py0 = r.h * z <= vh - 2 * m ? (vh - r.h * z) / 2 - r.y * z : m - r.y * z;
+  apply();
+}
+$('groups').addEventListener('click', e => { const b = e.target.closest('[data-g]'); if (b) focusRect(curGroups[+b.dataset.g]); });
+
 function showAll() { sel = null; renderList(); renderTree(); closeDrawers(); }
 
 function renderTree() {
   const d = byId[sel], list = d ? relatives(sel) : dragons, t = $('tree');
   $('treeTitle').textContent = d ? 'Родословная: ' + d.name : 'Вся родословная';
-  if (!list.length) { t.style.width = t.style.height = ''; t.innerHTML = '<div class="sm" style="padding:1.2rem">Пока никого нет.</div>'; fit(); return; }
+  if (!list.length) { t.style.width = t.style.height = ''; t.innerHTML = '<div class="sm" style="padding:1.2rem">Пока никого нет.</div>'; curGroups = []; renderGroups(); fit(); return; }
   const g = graph(list);
-  t.style.width = g.W + 'px'; t.style.height = g.H + 'px'; t.innerHTML = g.html; mainIds = g.main; fit();
+  t.style.width = g.W + 'px'; t.style.height = g.H + 'px'; t.innerHTML = g.html; mainIds = g.main; curGroups = g.groups; renderGroups(); fit();
 }
 
 function pick(id) { sel = id; renderList(); renderTree(); closeDrawers(); }
@@ -422,6 +467,7 @@ function edit(id) {
   $('name').value = d?.name ?? ''; $('sex').value = d?.sex ?? 'M';
   $('sire').value = d?.sire_id ?? ''; $('dam').value = d?.dam_id ?? '';
   $('img').value = d?.image_url ?? ''; $('notes').value = d?.notes ?? '';
+  $('alive').value = d?.alive === false ? '0' : '1'; $('lair').value = d?.in_lair === false ? '0' : '1'; syncLair();
   $('del').classList.toggle('hide', !d); $('msg').textContent = ''; preview();
 }
 
@@ -434,15 +480,18 @@ function preview() {
   im.src = u;
 }
 $('img').oninput = preview;
+function syncLair() { $('lair').disabled = $('alive').value === '0'; }
+$('alive').onchange = syncLair;
 
 async function save() {
   const name = $('name').value.trim();
   if (!name) { $('msg').textContent = 'Введите имя дракона.'; return; }
   const row = { name, sex: $('sex').value, sire_id: $('sire').value || null, dam_id: $('dam').value || null,
-    image_url: $('img').value.trim() || null, notes: $('notes').value.trim() || null };
+    image_url: $('img').value.trim() || null, notes: $('notes').value.trim() || null,
+    alive: $('alive').value === '1', in_lair: $('lair').value === '1' };
   const q = editId ? sb.from('dragons').update(row).eq('id', editId).select().single() : sb.from('dragons').insert(row).select().single();
   const { data, error } = await q;
-  if (error) { $('msg').textContent = 'Не удалось сохранить: ' + error.message; return; }
+  if (error) { $('msg').textContent = /alive|in_lair/.test(error.message) ? 'В таблице dragons нет столбцов alive и in_lair — добавьте их в Supabase (SQL Editor), см. инструкцию.' : 'Не удалось сохранить: ' + error.message; return; }
   sel = data.id; await load(); edit(null);
   $('msg').textContent = 'Сохранено.';
 }
@@ -566,7 +615,7 @@ function renderAuth() {
 document.addEventListener('click', e => {
   const t = e.target.closest('[data-id]'); if (t) pick(t.dataset.id);
 });
-$('q').oninput = renderList;
+$('q').oninput = renderList; $('stf').onchange = renderList;
 $('save').onclick = save; $('del').onclick = remove; $('reset').onclick = () => edit(null);
 
 // Перемещение и масштаб: мышь (перетаскивание, колесо), тач (один палец, щипок), кнопки
@@ -592,7 +641,9 @@ function fit(all = false) {
     let fx = 0, fy = 0;
     const clampX = v => Math.max(0, Math.min(v, Math.max(0, w - Wv))), clampY = v => Math.max(0, Math.min(v, Math.max(0, h - Hv)));
     const selB = bx.find(b => b.s);
-    if (selB) { fx = clampX(selB.x + CARD / 2 - Wv / 2); fy = clampY(selB.y + CH / 2 - Hv / 2); }   // выбранный дракон — в центре
+    const g0 = curGroups[0];
+    if (!selB && g0 && g0.w <= Wv) { fx = clampX(g0.x); fy = clampY(g0.y); }   // основной род виден целиком — начинаем с его левого верхнего угла
+    else if (selB) { fx = clampX(selB.x + CARD / 2 - Wv / 2); fy = clampY(selB.y + CH / 2 - Hv / 2); }   // выбранный дракон — в центре
     else {
       let best = -1;
       const cand = bx.some(b => b.m) ? bx.filter(b => b.m) : bx;   // ищем место в самой большой семье
